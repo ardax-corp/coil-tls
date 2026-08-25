@@ -25,3 +25,33 @@ jobs:
 
       - name: Release cdylib
         run: cargo build --release
+
+  coil:
+    name: coil test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: coil-tls
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ardax-corp/coil-lang
+          path: coil-lang
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build coil
+        working-directory: coil-lang
+        run: cargo build
+
+      - name: Build libtls.so
+        working-directory: coil-tls/native
+        run: make artifact
+
+      - name: Run coil tests
+        working-directory: coil-tls
+        run: ../coil-lang/target/debug/coil test
