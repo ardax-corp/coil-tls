@@ -1,66 +1,55 @@
-// Userland enable smoke. Stream has no public fd, so handshake round-trips
-// stay in native tests. Do not wrap a second Stream type.
-use io::{IoError};
-use tls::client::{enable, ClientOpts};
-use tls::server::{enable as server_enable, ServerOpts};
+// Userland enable smoke. Handshake round-trips stay in native tests.
+// enable(Stream, host, opts) must typecheck; file Stream is InvalidInput
+// (same as leftover HostInvoke). Do not wrap a second Stream type.
+use io::{open, IoError};
+use tls::client::{enable, disable};
+use tls::server::{enable as server_enable};
+use tls::{alpn_protocol};
 
-extern "c" {
-    fn creat(string path, int mode) -> int;
-    fn close(int fd) -> int;
-}
-
-fn client_opts() -> ClientOpts {
-    return new ClientOpts(false, Option::None, Option::None, 0, "");
-}
-
-fn is_invalid_or_other(IoError e) -> bool {
-    if e == IoError::InvalidInput {
-        return true;
-    }
-    if e == IoError::Other {
-        return true;
-    }
-    return false;
-}
-
-fn is_cert_or_invalid(IoError e) -> bool {
-    if e == IoError::Certificate {
-        return true;
-    }
-    if e == IoError::InvalidInput {
-        return true;
-    }
-    return false;
-}
-
-test("client enable on a file fd is Err") {
-    let fd = creat("/tmp/coil_tls_smoke.bin", 420);
-    assert(fd >= 0, "creat")?;
-    let r = enable(fd, "127.0.0.1", client_opts());
-    close(fd);
+test("client enable on a file Stream is InvalidInput") {
+    let r = match open("/tmp/coil_tls_enable_file.bin", "w") {
+        Result::Ok(s) => enable(s, "127.0.0.1", { verify: false, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 0, alpn: "" }),
+        Result::Err(_) => Result::Err(IoError::Other),
+    };
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => is_invalid_or_other(e),
+        Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput or Other")?;
+    assert(ok, "expected InvalidInput")?;
 }
 
-test("server enable empty cert is Err") {
-    let opts = new ServerOpts("", "", 0, "", "");
-    let r = server_enable(-1, opts);
+test("server enable on a file Stream is InvalidInput") {
+    let r = match open("/tmp/coil_tls_enable_server_file.bin", "w") {
+        Result::Ok(s) => server_enable(s, { cert_pem: "", key_pem: "", timeout_ms: 0, client_ca_pem: "", alpn: "" }),
+        Result::Err(_) => Result::Err(IoError::Other),
+    };
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => is_cert_or_invalid(e),
+        Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected Certificate or InvalidInput")?;
+    assert(ok, "expected InvalidInput")?;
 }
 
-test("server enable bad pem is Err") {
-    let opts = new ServerOpts("-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n", "-----BEGIN PRIVATE KEY-----\nalso-not\n-----END PRIVATE KEY-----\n", 0, "", "");
-    let r = server_enable(-1, opts);
+test("alpn_protocol on a file Stream is InvalidInput") {
+    let r = match open("/tmp/coil_tls_alpn_file.bin", "w") {
+        Result::Ok(s) => alpn_protocol(s),
+        Result::Err(_) => Result::Err(IoError::Other),
+    };
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => is_cert_or_invalid(e),
+        Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected Certificate or InvalidInput")?;
+    assert(ok, "expected InvalidInput")?;
+}
+
+test("disable on a file Stream is InvalidInput") {
+    let r = match open("/tmp/coil_tls_disable_file.bin", "w") {
+        Result::Ok(s) => disable(s),
+        Result::Err(_) => Result::Err(IoError::Other),
+    };
+    let ok = match r {
+        Result::Ok(_) => false,
+        Result::Err(e) => e == IoError::InvalidInput,
+    };
+    assert(ok, "expected InvalidInput")?;
 }
