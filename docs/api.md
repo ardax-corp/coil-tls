@@ -1,20 +1,20 @@
 # API
 
-Module: `use tls::{client, server, alpn_protocol, Session};` (package name `tls` from `coil.toml`).
+Module: `use tls::{client, server, alpn_protocol};` (package name `tls` from `coil.toml`).
 
 Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls-design-v1-d4fd96ddc404).
 
 ## In-place upgrade
 
-`client::enable` / `server::enable` return a `Session` whose `ptr` is the native session pointer. coil-lang leftover stores that pointer on the existing `ObjStream` (`StreamKind::Tls`). Do not wrap a second Stream type.
+`client::enable` / `server::enable` take a TCP `Stream` and return that same `Stream` with TLS attached (`StreamKind::Tls`). coil-http keeps `enable(stream, host, opts) -> Result<Stream, IoError>`. Do not wrap a second Stream type. Do not use `enable(fd) -> Session` as the HTTP-facing API.
 
-Until that leftover lands, pass the TCP **fd** (`int`) that the Stream owns. `stream_read` / `stream_write` / close will dispatch through `coil_tls_read` / `coil_tls_write` / `coil_tls_disable` once the VM leftover is in.
+Attachment is leftover HostInvoke (`tls_client_enable` / `tls_server_enable` / disable / `tls_alpn_protocol`, ids 25–28 and 121). The native dloads `coil_tls_*`, stores the session pointer on `ObjStream`, parks WouldBlock on `reactor_wait_fd_no_help` ([COI-116](https://linear.app/ardax/issue/COI-116)), and does not retry enable. `stream_read` / `stream_write` / close then go through `coil_tls_*`.
+
+C ABI `Session` helpers are `tls::abi`. They talk `coil_tls_*` and do **not** attach `StreamKind::Tls`.
 
 ## Types
 
 ```coil
-class Session { ptr: int }
-
 class ClientOpts {
     verify: bool,
     ca_pem: Option<string>,
@@ -32,24 +32,22 @@ class ServerOpts {
 }
 ```
 
-`Session.drop` calls `coil_tls_free`. Prefer `disable` so `close_notify` is sent. Until Finalizers ([COI-30](https://linear.app/ardax/issue/COI-30)) are guaranteed everywhere, call `disable` or `drop` yourself.
-
-Handles are not thread-sendable.
+Call sites may pass a record with the same fields (coil-http does). Handles are not thread-sendable.
 
 ## Functions
 
 | Function | Description |
 |----------|-------------|
-| `client::enable(fd, host, opts)` | Client handshake. Returns `Session`. |
-| `client::disable(session, fd)` | `close_notify` + free; resume plaintext on the same fd |
-| `server::enable(fd, opts)` | Server handshake |
-| `server::disable(session, fd)` | Same teardown as client disable |
-| `alpn_protocol(session)` | Negotiated ALPN, or `""` |
+| `client::enable(stream, host, opts)` | Client handshake. Returns the same `Stream`. |
+| `client::disable(stream)` | `close_notify` + free; resume plaintext on the same Stream |
+| `server::enable(stream, opts)` | Server handshake |
+| `server::disable(stream)` | Same teardown as client disable |
+| `alpn_protocol(stream)` | Negotiated ALPN, or `""` |
 
 All return `Result<_, IoError>`. `timeout_ms <= 0` means no handshake deadline. Extra `ca_pem` / `ca_path` **append** to webpki roots when `verify` is true. Empty `client_ca_pem` means no mTLS. `alpn` is `""`, `"h2"`, `"http/1.1"`, or a comma list.
 
-`WouldBlock` means the fd is not ready. The VM parks it ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not retry `enable` for the same handshake; continue with read/write on the returned session.
+A non-TCP Stream (for example a file from `open`) is `InvalidInput`. `WouldBlock` during enable is parked by leftover HostInvoke; the call returns `Ok(Stream)`. Do not retry `enable` for the same handshake; continue with read/write.
 
-## C ABI
+## C ABI (`tls::abi`)
 
-Declared in `extern "tls"` / `native/tls.h`. Symbols: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_alpn`, `coil_tls_disable`, `coil_tls_free`. rustls is not called from `.hy`.
+Declared in `extern "tls"` / `native/tls.h`. Symbols: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_alpn`, `coil_tls_disable`, `coil_tls_free`. rustls is not called from `.hy`. `err_out` is a pointer slot, not literal `0`.
