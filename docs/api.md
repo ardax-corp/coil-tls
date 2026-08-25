@@ -50,4 +50,4 @@ A non-TCP Stream (for example a file from `open`) is `InvalidInput`. `WouldBlock
 
 ## C ABI (`tls::abi`)
 
-Declared in `extern "tls"` / `native/tls.h`. Symbols: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_alpn`, `coil_tls_disable`, `coil_tls_free`. rustls is not called from `.hy`. `err_out` is a pointer slot, not literal `0`.
+Declared in `extern "tls"` / `native/tls.h`. Symbols: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_alpn`, `coil_tls_disable`, `coil_tls_free`. rustls is not called from `.hy`. `err_out` is a pointer slot, not literal `0`. `coil_tls_disable` is close_notify only (session stays valid). `coil_tls_free` is Drop. `tls::abi::disable` does not free or zero `Session.ptr`.
