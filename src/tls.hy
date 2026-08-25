@@ -9,16 +9,21 @@
 // or drop the Session handle. Session.drop calls coil_tls_free.
 
 use io::{IoError};
-use string::{from_bytes};
+
+extern "c" {
+    fn calloc(int n, int sz) -> int;
+    fn free(int p);
+}
 
 extern "tls" {
-    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, ptr err_out) -> int;
-    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, ptr err_out) -> int;
-    fn coil_tls_read(int session, int fd, ptr buf, int len, ptr err_out) -> int;
-    fn coil_tls_write(int session, int fd, ptr buf, int len, ptr err_out) -> int;
-    fn coil_tls_alpn(int session, ptr out, int out_len) -> int;
-    fn coil_tls_disable(int session, int fd, ptr err_out);
+    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
+    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
+    fn coil_tls_read(int session, int fd, int buf, int len, int err_out) -> int;
+    fn coil_tls_write(int session, int fd, int buf, int len, int err_out) -> int;
+    fn coil_tls_alpn(int session, int out, int out_len) -> int;
+    fn coil_tls_disable(int session, int fd, int err_out);
     fn coil_tls_last_error() -> string;
+    fn coil_tls_cstr(int p) -> string;
     fn coil_tls_free(int session);
 }
 
@@ -95,12 +100,12 @@ fn alpn_protocol(Session s) -> Result<string, IoError> {
     if n == 0 {
         return "";
     }
-    let buf: Vec<byte> = Vec::new();
-    let i = 0;
-    while i < n {
-        buf.push(0 as byte);
-        i = i + 1;
+    let buf = calloc(n + 1, 1);
+    if buf == 0 {
+        raise IoError::Other;
     }
     coil_tls_alpn(s.ptr, buf, n);
-    return from_bytes(buf)?;
+    let proto = coil_tls_cstr(buf);
+    free(buf);
+    return proto;
 }

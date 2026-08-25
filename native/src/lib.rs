@@ -312,6 +312,16 @@ pub extern "C" fn coil_tls_last_error() -> *const c_char {
     crate::error::last_error()
 }
 
+/// Borrow a NUL-terminated C string so Coil can copy it (`-> string`).
+#[no_mangle]
+pub extern "C" fn coil_tls_cstr(p: *const c_char) -> *const c_char {
+    if p.is_null() {
+        c"".as_ptr()
+    } else {
+        p
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

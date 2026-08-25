@@ -13,8 +13,8 @@ class ServerOpts {
 }
 
 extern "tls" {
-    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, ptr err_out) -> int;
-    fn coil_tls_disable(int session, int fd, ptr err_out);
+    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
+    fn coil_tls_disable(int session, int fd, int err_out);
 }
 
 fn enable(int fd, ServerOpts opts) -> Result<Session, IoError> {

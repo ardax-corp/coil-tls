@@ -82,6 +82,9 @@ void coil_tls_free(int64_t session);
 /* Last IoErrorTag name on this thread, or empty. Used when err_out is NULL. */
 const char *coil_tls_last_error(void);
 
+/* Borrow a NUL-terminated C string for Coil `-> string` (null becomes ""). */
+const char *coil_tls_cstr(const char *p);
+
 #ifdef __cplusplus
 }
 #endif

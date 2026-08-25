@@ -14,8 +14,8 @@ class ClientOpts {
 }
 
 extern "tls" {
-    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, ptr err_out) -> int;
-    fn coil_tls_disable(int session, int fd, ptr err_out);
+    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
+    fn coil_tls_disable(int session, int fd, int err_out);
 }
 
 fn verify_int(bool v) -> int {
