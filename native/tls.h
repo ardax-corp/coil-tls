@@ -74,9 +74,10 @@ int64_t coil_tls_write(
  * size a buffer. */
 int64_t coil_tls_alpn(int64_t session, uint8_t *out, int64_t out_len);
 
-/* close_notify (best effort) then free. */
+/* close_notify (best effort). Session stays valid; coil_tls_free is Drop. */
 void coil_tls_disable(int64_t session, int64_t fd, const char **err_out);
 
+/* Destructor. No-op for 0. */
 void coil_tls_free(int64_t session);
 
 /* Last IoErrorTag name on this thread, or empty. Used when err_out is NULL. */

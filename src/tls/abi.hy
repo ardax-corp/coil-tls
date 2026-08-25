@@ -114,6 +114,7 @@ fn server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string
     return wrap_session(ptr)?;
 }
 
+// close_notify only. Drop still owns ptr and calls coil_tls_free.
 fn disable(Session s, int fd) -> Result<(), IoError> {
     if s.ptr == 0 {
         raise IoError::InvalidInput;
@@ -124,7 +125,6 @@ fn disable(Session s, int fd) -> Result<(), IoError> {
     }
     coil_tls_disable(s.ptr, fd, slot);
     free(slot);
-    s.ptr = 0;
     return ();
 }
 
