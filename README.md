@@ -10,13 +10,14 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 
 | Path | Role |
 |------|------|
-| `src/` | Coil userland (`client::enable` / `disable`, `server::enable` / `disable`, `alpn_protocol`) |
+| `src/tls/client.hy` | `enable(Stream, host, opts) -> Result<Stream, IoError>` via leftover HostInvoke |
+| `src/tls/server.hy` | `enable(Stream, opts)` / `disable(Stream)` |
+| `src/tls.hy` | `alpn_protocol(Stream)` |
+| `src/tls/abi.hy` | C ABI `Session` helpers (`coil_tls_*`); not the HTTP-facing API |
 | `native/` | rustls 0.23 cdylib, C ABI `coil_tls_*` |
 | `docs/` | API and consume notes |
 
-Handshake stays non-blocking. One call does as much rustls work as the fd allows, then returns `WouldBlock` so the VM can park the fd ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
-
-The native session pointer is what `ObjStream` will store (`StreamKind::Tls`). This package does not invent a second Stream type.
+Handshake stays non-blocking. Leftover HostInvoke does one rustls step, attaches the session, and parks WouldBlock on the VM ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
 
 ## Build
 
@@ -26,6 +27,8 @@ cargo build --release --manifest-path native/Cargo.toml
 # copy native/target/release/libtls.so (or .dylib / tls.dll) to native/
 # so [ffi] search_paths = ["./native"] resolves dload("tls")
 ```
+
+Sibling consume: `[module] roots` + `[ffi] search_paths` + built `libtls.so`. See [docs/consume.md](docs/consume.md).
 
 ## License
 

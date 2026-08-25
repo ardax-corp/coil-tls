@@ -37,6 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-lang
+          ref: cursor/coi-210-delete-virtual-tls-7402
           path: coil-lang
 
       - name: Install deps
