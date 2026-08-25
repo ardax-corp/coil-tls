@@ -41,6 +41,8 @@ unsafe fn borrow_nb(fd: i64) -> Result<BorrowedTcp, ErrorTag> {
         return Err(ErrorTag::InvalidInput);
     }
     let sock = BorrowedTcp::from_raw(fd);
+    // Files and other non-sockets fail getsockname; reject before handshake.
+    sock.local_addr().map_err(|_| ErrorTag::InvalidInput)?;
     sock.set_nonblocking(true)
         .map_err(|e| ErrorTag::from_kind(e.kind()))?;
     Ok(sock)
@@ -303,6 +305,11 @@ pub extern "C" fn coil_tls_disable(session: i64, fd: i64, err_out: *mut *const c
 #[no_mangle]
 pub extern "C" fn coil_tls_free(session: i64) {
     unsafe { TlsSession::free(session) };
+}
+
+#[no_mangle]
+pub extern "C" fn coil_tls_last_error() -> *const c_char {
+    crate::error::last_error()
 }
 
 #[cfg(test)]
@@ -661,7 +668,21 @@ mod tests {
         let (session, tag) = client_enable(raw_fd(&s), "", 0, "", "", 0, "");
         assert_eq!(session, 0);
         assert_eq!(tag, "InvalidInput");
+        let last = unsafe { std::ffi::CStr::from_ptr(coil_tls_last_error()) };
+        assert_eq!(last.to_str().unwrap(), "InvalidInput");
         let _ = accept.join();
+    }
+
+    #[test]
+    fn enable_rejects_nontcp_file_fd() {
+        use std::os::fd::AsRawFd;
+        let path = std::env::temp_dir().join("coil_tls_nontcp.bin");
+        let f = std::fs::File::create(&path).expect("create");
+        let (session, tag) = client_enable(f.as_raw_fd() as i64, "127.0.0.1", 0, "", "", 0, "");
+        assert_eq!(session, 0);
+        assert_eq!(tag, "InvalidInput");
+        drop(f);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -79,6 +79,9 @@ void coil_tls_disable(int64_t session, int64_t fd, const char **err_out);
 
 void coil_tls_free(int64_t session);
 
+/* Last IoErrorTag name on this thread, or empty. Used when err_out is NULL. */
+const char *coil_tls_last_error(void);
+
 #ifdef __cplusplus
 }
 #endif

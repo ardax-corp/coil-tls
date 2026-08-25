@@ -31,6 +31,10 @@ impl BorrowedTcp {
     pub fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nb)
     }
+
+    pub fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        self.inner.local_addr()
+    }
 }
 
 impl Read for BorrowedTcp {

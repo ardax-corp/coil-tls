@@ -18,6 +18,7 @@ extern "tls" {
     fn coil_tls_write(int session, int fd, ptr buf, int len, ptr err_out) -> int;
     fn coil_tls_alpn(int session, ptr out, int out_len) -> int;
     fn coil_tls_disable(int session, int fd, ptr err_out);
+    fn coil_tls_last_error() -> string;
     fn coil_tls_free(int session);
 }
 
@@ -74,7 +75,11 @@ fn io_error_from_name(string tag) -> IoError {
 
 fn wrap_session(int ptr) -> Result<Session, IoError> {
     if ptr == 0 {
-        raise IoError::Other;
+        let name = coil_tls_last_error();
+        if name == "" {
+            raise IoError::Other;
+        }
+        raise io_error_from_name(name);
     }
     return new Session(ptr);
 }

@@ -1,7 +1,10 @@
 //! IoErrorTag names and discriminants, matching coil-lang `machine/src/io.rs`.
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::io::ErrorKind;
+use std::os::raw::c_char;
+use std::ptr;
 
 /// Tag indices for coil `IoError`. Append-only; keep discriminants aligned.
 #[repr(i64)]
@@ -71,14 +74,31 @@ pub fn map_tls_err(e: rustls::Error) -> ErrorTag {
     }
 }
 
-pub unsafe fn write_err(err_out: *mut *const std::os::raw::c_char, tag: ErrorTag) {
+thread_local! {
+    static LAST_ERR: Cell<*const c_char> = const { Cell::new(ptr::null()) };
+}
+
+pub unsafe fn write_err(err_out: *mut *const c_char, tag: ErrorTag) {
+    let p = tag.as_cstr().as_ptr();
+    LAST_ERR.with(|c| c.set(p));
     if !err_out.is_null() {
-        *err_out = tag.as_cstr().as_ptr();
+        *err_out = p;
     }
 }
 
-pub unsafe fn write_ok(err_out: *mut *const std::os::raw::c_char) {
+pub unsafe fn write_ok(err_out: *mut *const c_char) {
+    LAST_ERR.with(|c| c.set(ptr::null()));
     if !err_out.is_null() {
-        *err_out = std::ptr::null();
+        *err_out = ptr::null();
+    }
+}
+
+/// Last tag name on this thread, or empty. Lets Coil read errors when `err_out` is null.
+pub fn last_error() -> *const c_char {
+    let p = LAST_ERR.with(|c| c.get());
+    if p.is_null() {
+        c"".as_ptr()
+    } else {
+        p
     }
 }
