@@ -283,7 +283,7 @@ pub extern "C" fn coil_tls_alpn(session: i64, out: *mut u8, out_len: i64) -> i64
     n as i64
 }
 
-/// close_notify (best effort) then free the session.
+/// close_notify (best effort). Session stays valid; Drop is `coil_tls_free`.
 #[no_mangle]
 pub extern "C" fn coil_tls_disable(session: i64, fd: i64, err_out: *mut *const c_char) {
     let tls = match unsafe { TlsSession::from_raw(session) } {
@@ -296,12 +296,10 @@ pub extern "C" fn coil_tls_disable(session: i64, fd: i64, err_out: *mut *const c
     if let Ok(mut sock) = unsafe { borrow_nb(fd) } {
         let _ = tls.send_close_notify(&mut sock);
     }
-    unsafe {
-        TlsSession::free(session);
-        write_ok(err_out);
-    }
+    unsafe { write_ok(err_out) };
 }
 
+/// Drop a session pointer. No-op for 0.
 #[no_mangle]
 pub extern "C" fn coil_tls_free(session: i64) {
     unsafe { TlsSession::free(session) };
@@ -797,6 +795,7 @@ mod tests {
         assert_eq!(echoed, b"hello-tls");
         let mut err: *const c_char = ptr::null();
         coil_tls_disable(session, fd, &mut err);
+        coil_tls_free(session);
         handle.join().expect("server");
     }
 
@@ -936,6 +935,7 @@ mod tests {
             write_all(session, fd, &buf[..n as usize]).expect("echo");
             let mut derr: *const c_char = ptr::null();
             coil_tls_disable(session, fd, &mut derr);
+            coil_tls_free(session);
             session = 0;
             let _ = session;
         });
@@ -951,6 +951,7 @@ mod tests {
         assert_eq!(echoed, b"ping-encrypt");
         let mut err: *const c_char = ptr::null();
         coil_tls_disable(session, fd, &mut err);
+        coil_tls_free(session);
         server.join().expect("server");
     }
 
@@ -970,6 +971,24 @@ mod tests {
         let mut err: *const c_char = ptr::null();
         coil_tls_disable(0, 0, &mut err);
         assert_eq!(tag_of(err), "InvalidInput");
+    }
+
+    #[test]
+    fn disable_then_free_is_safe() {
+        let (port, handle) = spawn_tls_echo_server();
+        let s = connect_nb(port);
+        let session = pump_client_enable(&s, "127.0.0.1", 0, "", 0, "").expect("enable");
+        let fd = raw_fd(&s);
+        write_all(session, fd, b"close-notify").expect("write");
+        let echoed = read_to_end(session, fd).expect("read");
+        assert_eq!(echoed, b"close-notify");
+        let mut err: *const c_char = ptr::null();
+        coil_tls_disable(session, fd, &mut err);
+        assert_eq!(tag_of(err), "");
+        assert!(coil_tls_alpn(session, ptr::null_mut(), 0) >= 0);
+        coil_tls_free(session);
+        drop(s);
+        handle.join().expect("server");
     }
 
     #[test]
@@ -1063,6 +1082,7 @@ mod tests {
             write_all(session, fd, &buf[..n as usize]).ok();
             let mut derr: *const c_char = ptr::null();
             coil_tls_disable(session, fd, &mut derr);
+            coil_tls_free(session);
         });
         ready_rx
             .recv_timeout(Duration::from_secs(2))
@@ -1076,6 +1096,7 @@ mod tests {
         assert_eq!(echoed, b"ca-ok");
         let mut err: *const c_char = ptr::null();
         coil_tls_disable(session, fd, &mut err);
+        coil_tls_free(session);
         server.join().expect("server");
     }
 }
