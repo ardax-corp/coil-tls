@@ -1,0 +1,19 @@
+[package]
+name = "tls"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "coil-tls rustls cdylib (C ABI coil_tls_*)"
+publish = false
+rust-version = "1.83"
+
+[lib]
+name = "tls"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustls = { version = "=0.23.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "=0.26.8"
+rustls-pemfile = "=2.2.0"
+# Pin: newer zeroize needs edition 2024 / rustc 1.85.
+zeroize = "=1.8.1"
