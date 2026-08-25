@@ -270,8 +270,12 @@ pub extern "C" fn coil_tls_alpn(session: i64, out: *mut u8, out_len: i64) -> i64
     if out_len < 0 {
         return -1;
     }
-    let n = proto.len().min(out_len.max(0) as usize);
-    if n > 0 && !out.is_null() {
+    // Size query: null or zero-length out returns proto.len(), not 0.
+    if out.is_null() || out_len == 0 {
+        return proto.len() as i64;
+    }
+    let n = proto.len().min(out_len as usize);
+    if n > 0 {
         unsafe { ptr::copy_nonoverlapping(proto.as_ptr(), out, n) };
     }
     n as i64
@@ -770,6 +774,7 @@ mod tests {
         let (port, handle) = spawn_tls_echo_server();
         let s = connect_nb(port);
         let session = pump_client_enable(&s, "127.0.0.1", 0, "", 0, "").expect("enable");
+        assert_eq!(coil_tls_alpn(session, ptr::null_mut(), 0), 0);
         let mut buf = [0u8; 32];
         let n = coil_tls_alpn(session, buf.as_mut_ptr(), buf.len() as i64);
         assert_eq!(n, 0);
@@ -783,6 +788,11 @@ mod tests {
         let (port, handle) = spawn_tls_echo_server_with_alpn(&[b"h2"]);
         let s = connect_nb(port);
         let session = pump_client_enable(&s, "127.0.0.1", 0, "", 0, "h2").expect("enable");
+        assert_eq!(coil_tls_alpn(session, ptr::null_mut(), 0), 2);
+        assert_eq!(coil_tls_alpn(session, ptr::null_mut(), 8), 2);
+        let mut untouched = [0xffu8; 1];
+        assert_eq!(coil_tls_alpn(session, untouched.as_mut_ptr(), 0), 2);
+        assert_eq!(untouched[0], 0xff);
         let mut buf = [0u8; 32];
         let n = coil_tls_alpn(session, buf.as_mut_ptr(), buf.len() as i64);
         assert_eq!(&buf[..n as usize], b"h2");
@@ -916,6 +926,7 @@ mod tests {
     #[test]
     fn alpn_on_null_session_is_invalid() {
         assert_eq!(coil_tls_alpn(0, ptr::null_mut(), 8), -1);
+        assert_eq!(coil_tls_alpn(0, ptr::null_mut(), 0), -1);
     }
 
     #[test]

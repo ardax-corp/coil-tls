@@ -68,8 +68,10 @@ int64_t coil_tls_write(
     const char **err_out
 );
 
-/* Writes negotiated ALPN into out (not NUL-terminated). Returns nbytes,
- * 0 if none, -1 if session is invalid. */
+/* Writes negotiated ALPN into out (not NUL-terminated). Returns nbytes
+ * copied, 0 if none, -1 if session is invalid. If out is NULL or out_len
+ * is 0, returns the ALPN byte length without copying so the caller can
+ * size a buffer. */
 int64_t coil_tls_alpn(int64_t session, uint8_t *out, int64_t out_len);
 
 /* close_notify (best effort) then free. */
