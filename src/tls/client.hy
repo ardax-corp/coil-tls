@@ -1,9 +1,12 @@
-// Client TLS. enable upgrades a TCP fd in place: the Session.ptr is what
-// ObjStream will store. Pass the same fd used by the Stream. WouldBlock means
-// the VM should park the fd (COI-116) and continue via read/write, not enable again.
+// Client TLS. In-place TCP→TLS on the same Stream (not a second Stream type).
+// Body is leftover HostInvoke `tls_client_enable` / `tls_client_disable`
+// (compiler export: virtual `io::net::tls::client` today). That native
+// dloads coil_tls_*, attach_enable_outcome, parks WouldBlock (COI-116).
+// Do not call coil_tls_* here and return a Session — ObjStream would stay TCP.
 
-use io::{IoError};
-use tls::{Session, wrap_session, option_string};
+use io::{Stream, IoError};
+use io::net::tls::client::enable as leftover_enable;
+use io::net::tls::client::disable as leftover_disable;
 
 class ClientOpts {
     verify: bool,
@@ -13,31 +16,10 @@ class ClientOpts {
     alpn: string,
 }
 
-extern "tls" {
-    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
-    fn coil_tls_disable(int session, int fd, int err_out);
+fn enable<T>(Stream s, string host, T opts) -> Result<Stream, IoError> {
+    return leftover_enable(s, host, opts);
 }
 
-fn verify_int(bool v) -> int {
-    if v {
-        return 1;
-    }
-    return 0;
-}
-
-fn enable(int fd, string host, ClientOpts opts) -> Result<Session, IoError> {
-    let v = verify_int(opts.verify);
-    let pem = option_string(opts.ca_pem);
-    let path = option_string(opts.ca_path);
-    let ptr = coil_tls_client_enable(fd, host, v, pem, path, opts.timeout_ms, opts.alpn, 0);
-    return wrap_session(ptr)?;
-}
-
-fn disable(Session s, int fd) -> Result<(), IoError> {
-    if s.ptr == 0 {
-        raise IoError::InvalidInput;
-    }
-    coil_tls_disable(s.ptr, fd, 0);
-    s.ptr = 0;
-    return ();
+fn disable(Stream s) -> Result<Stream, IoError> {
+    return leftover_disable(s);
 }

@@ -1,8 +1,9 @@
-// Server TLS. Same in-place upgrade as the client: Session.ptr is the native
-// session ObjStream will store. Empty client_ca_pem means no mTLS.
+// Server TLS. Same leftover HostInvoke attach as the client: first arg and
+// return are Stream. Empty client_ca_pem means no mTLS.
 
-use io::{IoError};
-use tls::{Session, wrap_session};
+use io::{Stream, IoError};
+use io::net::tls::server::enable as leftover_enable;
+use io::net::tls::server::disable as leftover_disable;
 
 class ServerOpts {
     cert_pem: string,
@@ -12,21 +13,10 @@ class ServerOpts {
     alpn: string,
 }
 
-extern "tls" {
-    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
-    fn coil_tls_disable(int session, int fd, int err_out);
+fn enable<T>(Stream s, T opts) -> Result<Stream, IoError> {
+    return leftover_enable(s, opts);
 }
 
-fn enable(int fd, ServerOpts opts) -> Result<Session, IoError> {
-    let ptr = coil_tls_server_enable(fd, opts.cert_pem, opts.key_pem, opts.timeout_ms, opts.client_ca_pem, opts.alpn, 0);
-    return wrap_session(ptr)?;
-}
-
-fn disable(Session s, int fd) -> Result<(), IoError> {
-    if s.ptr == 0 {
-        raise IoError::InvalidInput;
-    }
-    coil_tls_disable(s.ptr, fd, 0);
-    s.ptr = 0;
-    return ();
+fn disable(Stream s) -> Result<Stream, IoError> {
+    return leftover_disable(s);
 }

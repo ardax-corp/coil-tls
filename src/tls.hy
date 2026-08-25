@@ -1,111 +1,12 @@
-// coil-tls FFI + shared helpers.
+// coil-tls userland. HTTP-facing enable/disable/alpn take Stream and call
+// leftover HostInvoke so ObjStream becomes StreamKind::Tls.
 //
-// In-place TCP→TLS upgrade: the int returned by enable is the native session
-// pointer ObjStream will store (StreamKind::Tls). Do not wrap a second Stream
-// type. coil-lang leftover wires fd + session onto the existing Stream and
-// dispatches stream_read / stream_write / close through coil_tls_*.
-//
-// Until Finalizers (COI-30) are guaranteed, call disable (close_notify + free)
-// or drop the Session handle. Session.drop calls coil_tls_free.
+// C ABI Session helpers live in `tls::abi` (fd + session pointer). They are
+// not what coil-http imports.
 
-use io::{IoError};
+use io::{Stream, IoError};
+use io::net::tls::alpn_protocol as leftover_alpn;
 
-extern "c" {
-    fn calloc(int n, int sz) -> int;
-    fn free(int p);
-}
-
-extern "tls" {
-    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
-    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
-    fn coil_tls_read(int session, int fd, int buf, int len, int err_out) -> int;
-    fn coil_tls_write(int session, int fd, int buf, int len, int err_out) -> int;
-    fn coil_tls_alpn(int session, int out, int out_len) -> int;
-    fn coil_tls_disable(int session, int fd, int err_out);
-    fn coil_tls_last_error() -> string;
-    fn coil_tls_cstr(int p) -> string;
-    fn coil_tls_free(int session);
-}
-
-class Session {
-    ptr: int,
-}
-
-impl Session {
-    fn drop() {
-        if self.ptr != 0 {
-            coil_tls_free(self.ptr);
-            self.ptr = 0;
-        }
-    }
-}
-
-fn option_string(Option<string> v) -> string {
-    return match v {
-        Option::None => "",
-        Option::Some(s) => s,
-    };
-}
-
-fn io_error_from_name(string tag) -> IoError {
-    if tag == "WouldBlock" {
-        return IoError::WouldBlock;
-    }
-    if tag == "AlreadyClosed" {
-        return IoError::AlreadyClosed;
-    }
-    if tag == "InvalidInput" {
-        return IoError::InvalidInput;
-    }
-    if tag == "TimedOut" {
-        return IoError::TimedOut;
-    }
-    if tag == "Truncated" {
-        return IoError::Truncated;
-    }
-    if tag == "Certificate" {
-        return IoError::Certificate;
-    }
-    if tag == "Handshake" {
-        return IoError::Handshake;
-    }
-    if tag == "NotFound" {
-        return IoError::NotFound;
-    }
-    if tag == "PermissionDenied" {
-        return IoError::PermissionDenied;
-    }
-    return IoError::Other;
-}
-
-fn wrap_session(int ptr) -> Result<Session, IoError> {
-    if ptr == 0 {
-        let name = coil_tls_last_error();
-        if name == "" {
-            raise IoError::Other;
-        }
-        raise io_error_from_name(name);
-    }
-    return new Session(ptr);
-}
-
-fn alpn_protocol(Session s) -> Result<string, IoError> {
-    if s.ptr == 0 {
-        raise IoError::InvalidInput;
-    }
-    let n = coil_tls_alpn(s.ptr, 0, 0);
-    if n < 0 {
-        raise IoError::InvalidInput;
-    }
-    if n == 0 {
-        return "";
-    }
-    let buf = calloc(n + 1, 1);
-    if buf == 0 {
-        raise IoError::Other;
-    }
-    coil_tls_alpn(s.ptr, buf, n);
-    let proto = coil_tls_cstr(buf);
-    free(buf);
-    return proto;
+fn alpn_protocol(Stream s) -> Result<string, IoError> {
+    return leftover_alpn(s);
 }
