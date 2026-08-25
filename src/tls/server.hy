@@ -2,8 +2,8 @@
 // return are Stream. Empty client_ca_pem means no mTLS.
 
 use io::{Stream, IoError};
-use io::net::tls::server::enable as leftover_enable;
-use io::net::tls::server::disable as leftover_disable;
+use io::net::tls::server::enable as leftover_tls_server_enable;
+use io::net::tls::server::disable as leftover_tls_server_disable;
 
 class ServerOpts {
     cert_pem: string,
@@ -14,9 +14,9 @@ class ServerOpts {
 }
 
 fn enable<T>(Stream s, T opts) -> Result<Stream, IoError> {
-    return leftover_enable(s, opts);
+    return leftover_tls_server_enable(s, opts)?;
 }
 
 fn disable(Stream s) -> Result<Stream, IoError> {
-    return leftover_disable(s);
+    return leftover_tls_server_disable(s)?;
 }

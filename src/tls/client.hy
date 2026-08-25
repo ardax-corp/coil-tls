@@ -5,8 +5,8 @@
 // Do not call coil_tls_* here and return a Session — ObjStream would stay TCP.
 
 use io::{Stream, IoError};
-use io::net::tls::client::enable as leftover_enable;
-use io::net::tls::client::disable as leftover_disable;
+use io::net::tls::client::enable as leftover_tls_client_enable;
+use io::net::tls::client::disable as leftover_tls_client_disable;
 
 class ClientOpts {
     verify: bool,
@@ -17,9 +17,9 @@ class ClientOpts {
 }
 
 fn enable<T>(Stream s, string host, T opts) -> Result<Stream, IoError> {
-    return leftover_enable(s, host, opts);
+    return leftover_tls_client_enable(s, host, opts)?;
 }
 
 fn disable(Stream s) -> Result<Stream, IoError> {
-    return leftover_disable(s);
+    return leftover_tls_client_disable(s)?;
 }

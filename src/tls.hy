@@ -5,8 +5,8 @@
 // not what coil-http imports.
 
 use io::{Stream, IoError};
-use io::net::tls::alpn_protocol as leftover_alpn;
+use io::net::tls::alpn_protocol as leftover_tls_alpn_protocol;
 
 fn alpn_protocol(Stream s) -> Result<string, IoError> {
-    return leftover_alpn(s);
+    return leftover_tls_alpn_protocol(s)?;
 }
