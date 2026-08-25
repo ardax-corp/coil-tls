@@ -1,0 +1,9 @@
+*.hyc
+*.so
+*.dylib
+*.dll
+*.o
+native/target/
+native/libtls.so
+native/libtls.dylib
+native/tls.dll
