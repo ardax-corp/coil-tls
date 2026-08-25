@@ -9,6 +9,7 @@
 // or drop the Session handle. Session.drop calls coil_tls_free.
 
 use io::{IoError};
+use string::{from_bytes};
 
 extern "tls" {
     fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, ptr err_out) -> int;
@@ -86,5 +87,15 @@ fn alpn_protocol(Session s) -> Result<string, IoError> {
     if n < 0 {
         raise IoError::InvalidInput;
     }
-    return "";
+    if n == 0 {
+        return "";
+    }
+    let buf: Vec<byte> = Vec::new();
+    let i = 0;
+    while i < n {
+        buf.push(0 as byte);
+        i = i + 1;
+    }
+    coil_tls_alpn(s.ptr, buf, n);
+    return from_bytes(buf)?;
 }
