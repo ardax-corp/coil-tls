@@ -66,6 +66,4 @@ coil-http keeps `enable(stream, host, opts) -> Result<Stream, IoError>`.
 
 Coil userland emits `HostInvoke` only when the compiler still has a binding (virtual module `IoFn` / `HostFn`, not `extern` / `dload`). There is no `native fn` syntax.
 
-On current coil-lang, that binding is virtual `io::net::tls::{client,server}` (surface `enable` → registry `tls_client_enable`, ids 25–28 and 121). This package imports that path and re-exports it as `tls::client::enable` so coil-http can `use tls::…`.
-
-[coil-lang #199](https://github.com/ardax-corp/coil-lang/pull/199) deletes virtual `use tls` / `use io::net::tls` while keeping leftover HostInvoke bodies. After that lands, this wrapper cannot compile unless #199 exports leftover under a name that is **not** `tls` / `io::net::tls` (or restores leftover `IoBuiltin` exports). The fix for that compile break is on coil-lang, not a second Stream type here.
+This package imports leftover `io::__tls::{client,server}` / `alpn_protocol` (surface `enable` → registry `tls_client_enable`, ids 25–28 and 121) and re-exports them as `tls::client::enable` so coil-http can `use tls::…`. `use tls` / `use io::net::tls` are not compiler modules after [coil-lang #199](https://github.com/ardax-corp/coil-lang/pull/199).

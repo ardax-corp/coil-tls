@@ -1,12 +1,12 @@
 // Client TLS. In-place TCP→TLS on the same Stream (not a second Stream type).
 // Body is leftover HostInvoke `tls_client_enable` / `tls_client_disable`
-// (compiler export: virtual `io::net::tls::client` today). That native
-// dloads coil_tls_*, attach_enable_outcome, parks WouldBlock (COI-116).
-// Do not call coil_tls_* here and return a Session — ObjStream would stay TCP.
+// via virtual `io::__tls::client` (ids 25–26). That native dloads coil_tls_*,
+// attach_enable_outcome, parks WouldBlock (COI-116). Do not call coil_tls_*
+// here and return a Session — ObjStream would stay TCP.
 
 use io::{Stream, IoError};
-use io::net::tls::client::enable as leftover_tls_client_enable;
-use io::net::tls::client::disable as leftover_tls_client_disable;
+use io::__tls::client::enable as leftover_tls_client_enable;
+use io::__tls::client::disable as leftover_tls_client_disable;
 
 class ClientOpts {
     verify: bool,

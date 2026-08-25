@@ -1,9 +1,10 @@
-// Server TLS. Same leftover HostInvoke attach as the client: first arg and
-// return are Stream. Empty client_ca_pem means no mTLS.
+// Server TLS. Same leftover HostInvoke attach as the client via
+// `io::__tls::server` (ids 27–28). First arg and return are Stream.
+// Empty client_ca_pem means no mTLS.
 
 use io::{Stream, IoError};
-use io::net::tls::server::enable as leftover_tls_server_enable;
-use io::net::tls::server::disable as leftover_tls_server_disable;
+use io::__tls::server::enable as leftover_tls_server_enable;
+use io::__tls::server::disable as leftover_tls_server_disable;
 
 class ServerOpts {
     cert_pem: string,
