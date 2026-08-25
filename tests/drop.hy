@@ -1,7 +1,8 @@
-// Session.drop calls coil_tls_free when ptr != 0. A live session pointer
-// needs a TCP fd; Stream does not expose one, and a second extern "c" next
-// to tls::abi stomps calloc/free. Native tests cover coil_tls_free(0) and
-// free of real sessions. This file covers the ptr=0 path drop actually takes.
+// Session.drop calls coil_tls_free when ptr != 0. disable is close_notify
+// only and must not zero ptr (Drop still owns the session). A live session
+// pointer needs a TCP fd; Stream does not expose one, and a second extern "c"
+// next to tls::abi stomps calloc/free. Native tests cover disable-then-free
+// of real sessions. This file covers the ptr=0 path drop actually takes.
 use gc::{collect};
 use io::{IoError};
 use tls::abi::{Session, disable};
