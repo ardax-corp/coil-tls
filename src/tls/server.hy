@@ -1,10 +1,8 @@
-// Server TLS. Same leftover HostInvoke attach as the client via
-// `io::__tls::server` (ids 27–28). First arg and return are Stream.
-// Empty client_ca_pem means no mTLS.
+// Server TLS. Same dload + Stream.attach + park as the client.
+// First arg and return are Stream. Empty client_ca_pem means no mTLS.
 
 use io::{Stream, IoError};
-use io::__tls::server::enable as leftover_tls_server_enable;
-use io::__tls::server::disable as leftover_tls_server_disable;
+use tls::abi::{create_server, attach_and_handshake, disable_stream};
 
 class ServerOpts {
     cert_pem: string,
@@ -14,10 +12,11 @@ class ServerOpts {
     alpn: string,
 }
 
-fn enable<T>(Stream s, T opts) -> Result<Stream, IoError> {
-    return leftover_tls_server_enable(s, opts)?;
+fn enable(Stream s, ServerOpts opts) -> Result<Stream, IoError> {
+    let ptr = create_server(s, opts.cert_pem, opts.key_pem, opts.timeout_ms, opts.client_ca_pem, opts.alpn)?;
+    return attach_and_handshake(s, ptr)?;
 }
 
 fn disable(Stream s) -> Result<Stream, IoError> {
-    return leftover_tls_server_disable(s)?;
+    return disable_stream(s)?;
 }

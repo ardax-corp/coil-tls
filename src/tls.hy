@@ -1,12 +1,10 @@
-// coil-tls userland. HTTP-facing enable/disable/alpn take Stream and call
-// leftover HostInvoke (`io::__tls`) so ObjStream becomes StreamKind::Tls.
-//
-// C ABI Session helpers live in `tls::abi` (fd + session pointer). They are
-// not what coil-http imports.
+// coil-tls userland. HTTP-facing enable/disable/alpn take Stream.
+// Enable is dload create + Stream.attach + park. rustls stays in libtls.so.
 
 use io::{Stream, IoError};
-use io::__tls::alpn_protocol as leftover_tls_alpn_protocol;
+use tls::abi::{session_for_stream, alpn_at};
 
 fn alpn_protocol(Stream s) -> Result<string, IoError> {
-    return leftover_tls_alpn_protocol(s)?;
+    let ptr = session_for_stream(s);
+    return alpn_at(ptr)?;
 }
