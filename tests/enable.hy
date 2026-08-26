@@ -1,14 +1,14 @@
 // Userland enable smoke. Handshake round-trips stay in native tests.
-// enable(Stream, host, opts) must typecheck; file Stream is InvalidInput
-// (same as leftover HostInvoke). Do not wrap a second Stream type.
+// enable(Stream, host, ClientOpts) must typecheck; file Stream is InvalidInput.
+// Do not wrap a second Stream type. Do not import io::__tls.
 use io::{open, IoError};
-use tls::client::{enable, disable};
-use tls::server::{enable as server_enable};
+use tls::client::{enable, disable, ClientOpts};
+use tls::server::{enable as server_enable, ServerOpts};
 use tls::{alpn_protocol};
 
 test("client enable on a file Stream is InvalidInput") {
     let r = match open("/tmp/coil_tls_enable_file.bin", "w") {
-        Result::Ok(s) => enable(s, "127.0.0.1", { verify: false, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 0, alpn: "" }),
+        Result::Ok(s) => enable(s, "127.0.0.1", new ClientOpts(false, Option::None, Option::None, 0, "")),
         Result::Err(_) => Result::Err(IoError::Other),
     };
     let ok = match r {
@@ -20,7 +20,7 @@ test("client enable on a file Stream is InvalidInput") {
 
 test("server enable on a file Stream is InvalidInput") {
     let r = match open("/tmp/coil_tls_enable_server_file.bin", "w") {
-        Result::Ok(s) => server_enable(s, { cert_pem: "", key_pem: "", timeout_ms: 0, client_ca_pem: "", alpn: "" }),
+        Result::Ok(s) => server_enable(s, new ServerOpts("", "", 0, "", "")),
         Result::Err(_) => Result::Err(IoError::Other),
     };
     let ok = match r {

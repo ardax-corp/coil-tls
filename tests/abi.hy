@@ -1,8 +1,7 @@
 // Lower-level C ABI Session helpers. Not the HTTP-facing Stream API.
-// File-fd coverage lives in native rust tests; a second extern "c" in this
-// file stomps the libc handle used by tls::abi (calloc / free).
+// File-fd coverage lives in native rust tests.
 use io::{IoError};
-use tls::abi::{server_enable};
+use tls::abi::{enable_server_fd};
 
 fn is_cert_or_invalid(IoError e) -> bool {
     if e == IoError::Certificate {
@@ -15,7 +14,7 @@ fn is_cert_or_invalid(IoError e) -> bool {
 }
 
 test("abi server enable empty cert is Err") {
-    let r = server_enable(-1, "", "", 0, "", "");
+    let r = enable_server_fd(-1, "", "", 0, "", "");
     let ok = match r {
         Result::Ok(_) => false,
         Result::Err(e) => is_cert_or_invalid(e),
@@ -24,7 +23,7 @@ test("abi server enable empty cert is Err") {
 }
 
 test("abi server enable bad pem is Err") {
-    let r = server_enable(-1, "-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n", "-----BEGIN PRIVATE KEY-----\nalso-not\n-----END PRIVATE KEY-----\n", 0, "", "");
+    let r = enable_server_fd(-1, "-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n", "-----BEGIN PRIVATE KEY-----\nalso-not\n-----END PRIVATE KEY-----\n", 0, "", "");
     let ok = match r {
         Result::Ok(_) => false,
         Result::Err(e) => is_cert_or_invalid(e),

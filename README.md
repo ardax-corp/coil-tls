@@ -1,6 +1,6 @@
 # coil-tls
 
-Userland TLS for [coil](https://github.com/ardax-corp/coil-lang). rustls lives in a Rust cdylib (`libtls.so` / `.dylib` / `.dll`) loaded with `dload("tls")` / `extern "tls"`, not in the interpreter.
+Userland TLS for [coil](https://github.com/ardax-corp/coil-lang). rustls lives in a Rust cdylib (`libtls.so` / `.dylib` / `.dll`) loaded with `dload("tls")`, not in the interpreter.
 
 Package name is `tls`, so `use tls::{client, server}` and `use tls::alpn_protocol` keep working after the virtual `io::net::tls` module is removed.
 
@@ -10,14 +10,16 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 
 | Path | Role |
 |------|------|
-| `src/tls/client.hy` | `enable(Stream, host, opts) -> Result<Stream, IoError>` via leftover HostInvoke |
-| `src/tls/server.hy` | `enable(Stream, opts)` / `disable(Stream)` |
+| `src/tls/client.hy` | `enable(Stream, host, ClientOpts)` via dload + `Stream.attach` |
+| `src/tls/server.hy` | `enable(Stream, ServerOpts)` / `disable(Stream)` |
 | `src/tls.hy` | `alpn_protocol(Stream)` |
 | `src/tls/abi.hy` | C ABI `Session` helpers (`coil_tls_*`); not the HTTP-facing API |
-| `native/` | rustls 0.23 cdylib, C ABI `coil_tls_*` |
+| `native/` | rustls 0.23 cdylib, leftover-shaped `coil_tls_*` plus attach hooks |
 | `docs/` | API and consume notes |
 
-Handshake stays non-blocking. Leftover HostInvoke does one rustls step, attaches the session, and parks WouldBlock on the VM ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
+Handshake stays non-blocking. One rustls step per call, then `Stream.park` on WouldBlock ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
+
+Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Stream.attach` / `Stream.park`; leftover TLS deleted) until that lands on main.
 
 ## Build
 

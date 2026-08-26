@@ -1,12 +1,8 @@
 // Client TLS. In-place TCP→TLS on the same Stream (not a second Stream type).
-// Body is leftover HostInvoke `tls_client_enable` / `tls_client_disable`
-// via virtual `io::__tls::client` (ids 25–26). That native dloads coil_tls_*,
-// attach_enable_outcome, parks WouldBlock (COI-116). Do not call coil_tls_*
-// here and return a Session — ObjStream would stay TCP.
+// Create via dload, then Stream.attach + park until handshake Ready.
 
 use io::{Stream, IoError};
-use io::__tls::client::enable as leftover_tls_client_enable;
-use io::__tls::client::disable as leftover_tls_client_disable;
+use tls::abi::{create_client, attach_and_handshake, disable_stream};
 
 class ClientOpts {
     verify: bool,
@@ -16,10 +12,12 @@ class ClientOpts {
     alpn: string,
 }
 
-fn enable<T>(Stream s, string host, T opts) -> Result<Stream, IoError> {
-    return leftover_tls_client_enable(s, host, opts)?;
+fn enable(Stream s, string host, ClientOpts opts) -> Result<Stream, IoError> {
+    let ptr = create_client(s, host, opts.verify, opts.ca_pem, opts.ca_path, opts.timeout_ms, opts.alpn)?;
+    return attach_and_handshake(s, ptr)?;
 }
 
+// close_notify only. Stream Drop still owns free through the vtable.
 fn disable(Stream s) -> Result<Stream, IoError> {
-    return leftover_tls_client_disable(s)?;
+    return disable_stream(s)?;
 }

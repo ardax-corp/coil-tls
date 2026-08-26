@@ -74,11 +74,37 @@ int64_t coil_tls_write(
  * size a buffer. */
 int64_t coil_tls_alpn(int64_t session, uint8_t *out, int64_t out_len);
 
+/* NUL-terminated ALPN for Coil `-> string` without a caller buffer. */
+const char *coil_tls_alpn_cstr(int64_t session);
+
+/* Session pointer for a live fd, or 0. Stream FFI Int args marshal to fd. */
+int64_t coil_tls_session_for_fd(int64_t fd);
+
 /* close_notify (best effort). Session stays valid; coil_tls_free is Drop. */
 void coil_tls_disable(int64_t session, int64_t fd, const char **err_out);
 
 /* Destructor. No-op for 0. */
 void coil_tls_free(int64_t session);
+
+/*
+ * Generic Stream.attach hooks. ptr is the session; fd is stored inside it.
+ * shutdown is close_notify and must not free. free is Drop.
+ *
+ *   typedef i64 (*stream_read_fn)(void* ptr, uint8_t* buf, size_t len, const char** err_out);
+ *   typedef i64 (*stream_write_fn)(void* ptr, const uint8_t* buf, size_t len, const char** err_out);
+ *   typedef i32 (*stream_shutdown_fn)(void* ptr, const char** err_out);
+ *   typedef void (*stream_free_fn)(void* ptr);
+ *
+ * *_fn() return those addresses as i64 for Stream.attach.
+ */
+int64_t coil_tls_stream_read(void *ptr, uint8_t *buf, size_t len, const char **err_out);
+int64_t coil_tls_stream_write(void *ptr, const uint8_t *buf, size_t len, const char **err_out);
+int32_t coil_tls_stream_shutdown(void *ptr, const char **err_out);
+void coil_tls_stream_free(void *ptr);
+int64_t coil_tls_stream_read_fn(void);
+int64_t coil_tls_stream_write_fn(void);
+int64_t coil_tls_stream_shutdown_fn(void);
+int64_t coil_tls_stream_free_fn(void);
 
 /* Last IoErrorTag name on this thread, or empty. Used when err_out is NULL. */
 const char *coil_tls_last_error(void);
