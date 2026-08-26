@@ -74,6 +74,9 @@ int64_t coil_tls_write(
  * size a buffer. */
 int64_t coil_tls_alpn(int64_t session, uint8_t *out, int64_t out_len);
 
+/* NUL-terminated ALPN for Coil `-> string` without a caller buffer. */
+const char *coil_tls_alpn_cstr(int64_t session);
+
 /* Session pointer for a live fd, or 0. Stream FFI Int args marshal to fd. */
 int64_t coil_tls_session_for_fd(int64_t fd);
 

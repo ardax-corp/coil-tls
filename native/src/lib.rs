@@ -321,6 +321,26 @@ pub extern "C" fn coil_tls_alpn(session: i64, out: *mut u8, out_len: i64) -> i64
     n as i64
 }
 
+thread_local! {
+    static ALPN_CSTR: std::cell::RefCell<std::ffi::CString> =
+        std::cell::RefCell::new(std::ffi::CString::default());
+}
+
+/// NUL-terminated ALPN for Coil `-> string` without a caller buffer.
+#[no_mangle]
+pub extern "C" fn coil_tls_alpn_cstr(session: i64) -> *const c_char {
+    let tls = match unsafe { TlsSession::from_raw(session) } {
+        Ok(s) => s,
+        Err(_) => return c"".as_ptr(),
+    };
+    let proto = tls.alpn_protocol();
+    let owned = std::ffi::CString::new(proto).unwrap_or_default();
+    ALPN_CSTR.with(|slot| {
+        *slot.borrow_mut() = owned;
+        slot.borrow().as_ptr()
+    })
+}
+
 /// close_notify (best effort). Session stays valid; Drop is `coil_tls_free`.
 #[no_mangle]
 pub extern "C" fn coil_tls_disable(session: i64, fd: i64, err_out: *mut *const c_char) {
@@ -1084,6 +1104,8 @@ mod tests {
     fn alpn_on_null_session_is_invalid() {
         assert_eq!(coil_tls_alpn(0, ptr::null_mut(), 8), -1);
         assert_eq!(coil_tls_alpn(0, ptr::null_mut(), 0), -1);
+        let p = unsafe { std::ffi::CStr::from_ptr(coil_tls_alpn_cstr(0)) };
+        assert_eq!(p.to_bytes(), b"");
     }
 
     #[test]
