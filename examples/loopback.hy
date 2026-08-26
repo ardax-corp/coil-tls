@@ -86,7 +86,7 @@ fn run() -> string {
     if client_proto == "h2" && server_proto == "h2" {
         return "ok";
     }
-    return "alpn";
+    return format("alpn-%s-%s", client_proto, server_proto);
 }
 
 fn main() {

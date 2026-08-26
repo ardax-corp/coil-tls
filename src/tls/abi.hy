@@ -290,6 +290,8 @@ fn disable_stream(Stream s) -> Result<Stream, IoError> {
 fn handshake_until_ready(Stream s) -> Result<Stream, IoError> {
     while true {
         let wbuf: Vec<byte> = Vec::new();
+        // Successful empty write is Ready. Empty userland read does not
+        // pump (VM returns Ok at capacity 0) so it is not a Ready signal.
         match write(s, wbuf) {
             Result::Ok(_) => {
                 return s;
@@ -302,9 +304,7 @@ fn handshake_until_ready(Stream s) -> Result<Stream, IoError> {
         };
         let rbuf: Vec<byte> = Vec::new();
         match read(s, rbuf) {
-            Result::Ok(_) => {
-                return s;
-            },
+            Result::Ok(_) => 0,
             Result::Err(e) => {
                 if e != IoError::WouldBlock {
                     raise e;
