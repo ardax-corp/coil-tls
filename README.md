@@ -19,7 +19,7 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 
 Handshake stays non-blocking. One rustls step per call, then `Stream.park` on WouldBlock ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
 
-Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Stream.attach` / `Stream.park`; leftover TLS deleted) until that lands on main.
+Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Stream.attach` / `Stream.park`; leftover TLS deleted).
 
 ## Build
 
@@ -34,10 +34,10 @@ Consume from a sibling checkout, or a git dep plus `coil.lock` pin. See [docs/co
 
 ```toml
 [dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
 ```
 
-`version` is schema so `coil.toml` parses (E0900). `^0.1` is not a tag. The pin is `coil.lock` `rev` + `content_hash`. Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). There is no `spool add` yet. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
+`{ git }` is the parseable form. `version` is optional schema, not a tag. The pin is `coil.lock` `rev` + `content_hash`. Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). There is no `spool add` yet. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
 
 ## License
 
