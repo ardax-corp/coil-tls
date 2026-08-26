@@ -19,7 +19,7 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 
 Handshake stays non-blocking. One rustls step per call, then `Stream.park` on WouldBlock ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
 
-Needs [coil-lang #203](https://github.com/ardax-corp/coil-lang/pull/203) (`Stream.attach` / `Stream.park`) until that lands on main.
+Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Stream.attach` / `Stream.park`; leftover TLS deleted) until that lands on main.
 
 ## Build
 

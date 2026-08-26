@@ -20,7 +20,7 @@ make -C native artifact
 
 `libtls.so` (or `.dylib` / `tls.dll`) must sit on `[ffi] search_paths` so `dload("tls")` resolves. `roots` must include this package's `src/` so `use tls::{client, server}` resolves here.
 
-Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #203](https://github.com/ardax-corp/coil-lang/pull/203) until that lands on main).
+Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) until that lands on main).
 
 Then:
 

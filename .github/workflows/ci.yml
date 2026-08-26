@@ -37,8 +37,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-lang
-          # Stream.attach / Stream.park: coil-lang#203 until it lands on main.
-          ref: cursor/generic-stream-attach-5f20
+          # Stream.attach / Stream.park: coil-lang#204 until it lands on main.
+          # #203's 148/149 table will not land; attach=120, park=121 (ARCHIVE 2.14).
+          ref: cursor/delete-leftover-tls-crypto-f61b
           path: coil-lang
 
       - name: Forbid leftover io::__tls import
