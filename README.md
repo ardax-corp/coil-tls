@@ -30,7 +30,9 @@ cargo build --release --manifest-path native/Cargo.toml
 # so [ffi] search_paths = ["./native"] resolves dload("tls")
 ```
 
-Sibling consume: `[module] roots` + `[ffi] search_paths` + built `libtls.so`. See [docs/consume.md](docs/consume.md).
+Consume from a sibling checkout or a `coil.lock` pin (`rev` + `content_hash`). See [docs/consume.md](docs/consume.md).
+
+Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). Until then there is no `spool add` and this repo has no tags. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
 
 ## License
 

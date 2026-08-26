@@ -1,6 +1,6 @@
 # API
 
-Module: `use tls::{client, server, alpn_protocol};` (package name `tls` from `coil.toml`).
+Module: `use tls::{client, server, alpn_protocol};` (package name `tls` from `coil.toml`). How to depend: [consume.md](consume.md).
 
 Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls-design-v1-d4fd96ddc404).
 
