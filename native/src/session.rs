@@ -14,27 +14,35 @@ pub struct TlsSession {
     plaintext_pos: usize,
     deadline: Option<Instant>,
     handshake_done: bool,
+    /// VM-owned socket. Attach hooks have no fd argument, so enable stores it.
+    fd: i64,
 }
 
 impl TlsSession {
-    pub fn from_client(conn: ClientConnection, deadline: Option<Instant>) -> Self {
+    pub fn from_client(conn: ClientConnection, deadline: Option<Instant>, fd: i64) -> Self {
         Self {
             conn: Connection::Client(conn),
             plaintext: Vec::new(),
             plaintext_pos: 0,
             deadline,
             handshake_done: false,
+            fd,
         }
     }
 
-    pub fn from_server(conn: ServerConnection, deadline: Option<Instant>) -> Self {
+    pub fn from_server(conn: ServerConnection, deadline: Option<Instant>, fd: i64) -> Self {
         Self {
             conn: Connection::Server(conn),
             plaintext: Vec::new(),
             plaintext_pos: 0,
             deadline,
             handshake_done: false,
+            fd,
         }
+    }
+
+    pub fn fd(&self) -> i64 {
+        self.fd
     }
 
     pub fn into_raw(self) -> i64 {
