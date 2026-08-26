@@ -30,9 +30,14 @@ cargo build --release --manifest-path native/Cargo.toml
 # so [ffi] search_paths = ["./native"] resolves dload("tls")
 ```
 
-Consume from a sibling checkout or a `coil.lock` pin (`rev` + `content_hash`). See [docs/consume.md](docs/consume.md).
+Consume from a sibling checkout, or a git dep plus `coil.lock` pin. See [docs/consume.md](docs/consume.md).
 
-Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). Until then there is no `spool add` and this repo has no tags. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
+```toml
+[dependencies]
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+```
+
+`version` is schema so `coil.toml` parses (E0900). `^0.1` is not a tag. The pin is `coil.lock` `rev` + `content_hash`. Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). There is no `spool add` yet. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
 
 ## License
 
