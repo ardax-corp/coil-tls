@@ -1,8 +1,8 @@
 # Consuming coil-tls
 
-This package is `tls`. `use tls::{client, server}` and `use tls::{alpn_protocol}` resolve from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call `dload("tls")` inside the package. Put the built library on `[ffi] search_paths`. Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) until that lands on main).
+This package is `tls`. `use tls::{client, server}` and `use tls::{alpn_protocol}` resolve from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call `dload("tls")` inside the package. Put the built library on `[ffi] search_paths`. Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204)).
 
-Coil-to-Coil deps will be spool-owned once a public `spool` CLI exists. Until [COI-219](https://linear.app/ardax/issue/COI-219) the pin is `coil.lock` `rev` + `content_hash`. A git dep still needs `{ git, version }` so `coil.toml` parses (E0900). `version` is a parser field, not a tag. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
+Coil-to-Coil deps will be spool-owned once a public `spool` CLI exists. Until [COI-219](https://linear.app/ardax/issue/COI-219) the pin is `coil.lock` `rev` + `content_hash`. `{ git }` is the parseable git form. `version` and `rev` are optional schema, stored only, not a required tag. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
 
 API: [api.md](api.md). Handshake demo: [examples/loopback.hy](../examples/loopback.hy).
 
@@ -38,13 +38,13 @@ let s = enable(tcp, "example.com", new ClientOpts(true, Option::None, Option::No
 
 ## coil.lock pin (until spool)
 
-Git deps still need `{ git, version }` or coil-lang reports E0900. `version` is a parser field, not a tag. This repo has no tags. Do not run `spool add tls`. There is no public spool CLI.
+`{ git }` is the parseable git form. `version` and `rev` may appear as optional schema; they are stored only, not a required tag. This repo has no tags. Do not run `spool add tls`. There is no public spool CLI.
 
 Until [COI-219](https://linear.app/ardax/issue/COI-219) the pin is `coil.lock` `rev` + `content_hash`. The compiler does not read `coil.lock` and does not inject roots. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
 
 ```toml
 [dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
 
 [module]
 roots = ["./src", "./.spool/deps/tls/src"]
@@ -53,7 +53,7 @@ roots = ["./src", "./.spool/deps/tls/src"]
 search_paths = ["./.spool/deps/tls/native"]
 ```
 
-`^0.1` does not resolve a tag. It is there so `coil.toml` parses. Pin the commit in `coil.lock` with `git`, `rev`, and `content_hash`. Omit `tag`.
+Pin the commit in `coil.lock` with `git`, `rev`, and `content_hash`. Omit `tag`. `version` in the manifest is optional schema, not a resolved tag.
 
 ```
 # spool lockfile v1
