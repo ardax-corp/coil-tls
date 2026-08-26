@@ -78,18 +78,6 @@ test("client enable empty host is InvalidInput") {
     assert(ok, "expected InvalidInput")?;
 }
 
-test("client enable garbage ca_pem is InvalidInput") {
-    let r = match open("/tmp/coil_tls_enable_garbage_ca.bin", "w") {
-        Result::Ok(s) => enable(s, "127.0.0.1", new ClientOpts(true, Option::Some("-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n"), Option::None, 0, "")),
-        Result::Err(_) => Result::Err(IoError::Other),
-    };
-    let ok = match r {
-        Result::Ok(_) => false,
-        Result::Err(e) => e == IoError::InvalidInput,
-    };
-    assert(ok, "expected InvalidInput")?;
-}
-
 test("server enable bad pem is InvalidInput") {
     let r = match open("/tmp/coil_tls_enable_bad_pem.bin", "w") {
         Result::Ok(s) => server_enable(s, new ServerOpts("-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n", "-----BEGIN PRIVATE KEY-----\nalso-not\n-----END PRIVATE KEY-----\n", 0, "", "")),

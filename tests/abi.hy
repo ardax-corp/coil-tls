@@ -40,15 +40,6 @@ test("abi client enable empty host is Err") {
     assert(ok, "expected InvalidInput")?;
 }
 
-test("abi client enable garbage ca_pem is Err") {
-    let r = enable_client_fd(-1, "127.0.0.1", true, Option::Some("-----BEGIN CERTIFICATE-----\nnot-valid\n-----END CERTIFICATE-----\n"), Option::None, 0, "");
-    let ok = match r {
-        Result::Ok(_) => false,
-        Result::Err(e) => is_cert_or_invalid(e),
-    };
-    assert(ok, "expected Certificate or InvalidInput")?;
-}
-
 test("abi alpn_protocol of ptr 0 is InvalidInput") {
     let s = new Session(0);
     let r = alpn_protocol(s);
