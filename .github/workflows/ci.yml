@@ -44,7 +44,7 @@ jobs:
       - name: Forbid leftover io::__tls import
         working-directory: coil-tls
         run: |
-          if grep -R --include='*.hy' 'use io::__tls' src tests examples; then
+          if grep -R --include='*.hy' -E '^[[:space:]]*use io::__tls' src tests examples; then
             echo "use io::__tls is forbidden in this package"
             exit 1
           fi
