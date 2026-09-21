@@ -5,11 +5,11 @@ use io::{Stream, IoError};
 use tls::abi::{create_server, attach_and_handshake, disable_stream};
 
 class ServerOpts {
-    cert_pem: string,
-    key_pem: string,
-    timeout_ms: int,
-    client_ca_pem: string,
-    alpn: string,
+    pub cert_pem: string,
+    pub key_pem: string,
+    pub timeout_ms: int,
+    pub client_ca_pem: string,
+    pub alpn: string,
 }
 
 fn enable(Stream s, ServerOpts opts) -> Result<Stream, IoError> {
