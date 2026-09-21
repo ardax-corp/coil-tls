@@ -11,7 +11,7 @@ use ffi::{declare, dload, invoke, Error};
 use ffi::types::{Int, String, Void};
 
 class Session {
-    ptr: int,
+    pub ptr: int,
 }
 
 fn option_string(Option<string> v) -> string {
@@ -139,7 +139,7 @@ impl Session {
         }
     }
 
-    fn release() -> int {
+    pub fn release() -> int {
         let p = self.ptr;
         self.ptr = 0;
         return p;
