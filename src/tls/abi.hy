@@ -192,12 +192,13 @@ fn enable_server_fd(int fd, string cert_pem, string key_pem, int timeout_ms, str
 }
 
 fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<int, IoError> {
+    let fd = s.fd()?;
     let lib = tls_lib()?;
     let id = match declare(lib, "coil_tls_client_enable", (Int, String, Int, String, String, Int, String, Int), Int) {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
-    let ptr = match invoke(lib, id, (s, host, verify_int(verify), option_string(ca_pem), option_string(ca_path), timeout_ms, alpn, 0)) {
+    let ptr = match invoke(lib, id, (fd, host, verify_int(verify), option_string(ca_pem), option_string(ca_path), timeout_ms, alpn, 0)) {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
@@ -205,12 +206,13 @@ fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Opti
 }
 
 fn create_server(Stream s, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<int, IoError> {
+    let fd = s.fd()?;
     let lib = tls_lib()?;
     let id = match declare(lib, "coil_tls_server_enable", (Int, String, String, Int, String, String, Int), Int) {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
-    let ptr = match invoke(lib, id, (s, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0)) {
+    let ptr = match invoke(lib, id, (fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0)) {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
@@ -257,7 +259,11 @@ fn session_for_stream(Stream s) -> int {
         Result::Ok(v) => v,
         Result::Err(_) => { return 0; },
     };
-    return match invoke(lib, id, (s,)) {
+    let fd = match s.fd() {
+        Result::Ok(n) => n,
+        Result::Err(_) => { return 0; },
+    };
+    return match invoke(lib, id, (fd,)) {
         Result::Ok(v) => v,
         Result::Err(_) => 0,
     };
@@ -269,7 +275,8 @@ fn disable_stream(Stream s) -> Result<Stream, IoError> {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
-    let ptr = match invoke(lib, lookup, (s,)) {
+    let fd = s.fd()?;
+    let ptr = match invoke(lib, lookup, (fd,)) {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
@@ -280,7 +287,7 @@ fn disable_stream(Stream s) -> Result<Stream, IoError> {
         Result::Ok(v) => v,
         Result::Err(_) => { raise IoError::Other; },
     };
-    match invoke(lib, id, (ptr, s, 0)) {
+    match invoke(lib, id, (ptr, fd, 0)) {
         Result::Ok(_) => 0,
         Result::Err(_) => { raise IoError::Other; },
     };
