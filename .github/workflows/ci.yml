@@ -53,13 +53,23 @@ jobs:
         working-directory: coil-tls/native
         run: make artifact
 
+      # Loading a native library needs its hash in coil.lock (or a trusted
+      # stem); record the one just built, as coil-sdl's `make write-lock` does.
+      - name: Lock libtls
+        working-directory: coil-tls
+        run: |
+          set -euo pipefail
+          hash=$(sha256sum native/libtls.so | awk '{print $1}')
+          printf '%s\n' '[[package]]' "name = 'tls'" '[[package.native]]' "sha256 = '$hash'" > coil.lock
+          cat coil.lock
+
       - name: Run coil tests
         working-directory: coil-tls
-        run: coil test
+        run: coil test --allow-attach --allow-dload tls
 
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(coil examples/loopback.hy)
+          out=$(coil --allow-attach --allow-dload tls examples/loopback.hy)
           echo "$out"
           test "$out" = "ok"
