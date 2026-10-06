@@ -34,14 +34,6 @@ jobs:
         with:
           path: coil-tls
 
-      - uses: actions/checkout@v4
-        with:
-          repository: ardax-corp/coil-lang
-          # Stream.attach / Stream.park: coil-lang#204 until it lands on main.
-          # #203's 148/149 table will not land; attach=120, park=121 (ARCHIVE 2.14).
-          ref: cursor/delete-leftover-tls-crypto-f61b
-          path: coil-lang
-
       - name: Forbid leftover io::__tls import
         working-directory: coil-tls
         run: |
@@ -50,14 +42,12 @@ jobs:
             exit 1
           fi
 
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
-
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build coil
-        working-directory: coil-lang
-        run: cargo build
+      # coil comes from the coil-lang `edge` release (a snapshot of its main,
+      # rebuilt after every green coil-lang CI run) instead of a source build.
+      - name: Install coil (edge)
+        uses: ardax-corp/coil-lang/.github/actions/setup-coil@main
 
       - name: Build libtls.so
         working-directory: coil-tls/native
@@ -65,11 +55,11 @@ jobs:
 
       - name: Run coil tests
         working-directory: coil-tls
-        run: ../coil-lang/target/debug/coil test
+        run: coil test
 
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(../coil-lang/target/debug/coil examples/loopback.hy)
+          out=$(coil examples/loopback.hy)
           echo "$out"
           test "$out" = "ok"
