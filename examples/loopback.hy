@@ -1,7 +1,7 @@
 // Client+server enable across Coil threads (COI-116). Uses Stream.attach,
 // not leftover HostInvoke. Parks WouldBlock on the VM. Run with `coil`
 // (coil test does not wire thread spawn).
-use io::{stdout, write, await_readable, IoError};
+use io::{stdout, write, wait_readable, IoError};
 use io::net::tcp::{listen, connect, accept, local_addr};
 use tls::client::{enable as client_enable, ClientOpts};
 use tls::server::{enable as server_enable, ServerOpts};
@@ -42,7 +42,7 @@ fn serve(Sender tx) -> Result<string, IoError> {
         Result::Ok(_) => 0,
         Result::Err(_) => { return Result::Err(IoError::Other); },
     };
-    await_readable(listener)?;
+    wait_readable(listener)?;
     let sock = accept(listener)?;
     let s = server_enable(sock, new ServerOpts(cert_pem(), key_pem(), 5000, "", "h2"))?;
     return alpn_protocol(s)?;
