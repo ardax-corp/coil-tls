@@ -65,11 +65,11 @@ jobs:
 
       - name: Run coil tests
         working-directory: coil-tls
-        run: coil test --allow-attach --allow-dload tls
+        run: coil test --allow-attach --allow-write --allow-dload tls
 
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(coil --allow-attach --allow-dload tls examples/loopback.hy)
+          out=$(coil --allow-attach --allow-net --allow-dload tls examples/loopback.hy)
           echo "$out"
           test "$out" = "ok"
