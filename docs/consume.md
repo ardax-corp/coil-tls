@@ -24,7 +24,7 @@ Build the native library from this package root:
 make -C native artifact
 ```
 
-`libtls.so` (or `.dylib` / `tls.dll`) must sit on `[ffi] search_paths` so `dload("tls")` resolves. `roots` must include this package's `src/` so `use tls::{client, server}` resolves here.
+`libtls.so` (or `.dylib` / `tls.dll`) must sit on `[ffi] search_paths` so `dload("tls")` resolves. The run needs `--allow-dload tls` and `--dload-trusted tls` (or `--dload-pin tls=SHA256`); spool passes the second from `trusted = true` on the dependency or a `coil.lock` native pin. `roots` must include this package's `src/` so `use tls::{client, server}` resolves here.
 
 Then:
 
