@@ -27,17 +27,10 @@ Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Strea
 cargo test --manifest-path native/Cargo.toml
 cargo build --release --manifest-path native/Cargo.toml
 # copy native/target/release/libtls.so (or .dylib / tls.dll) to native/
-# so [ffi] search_paths = ["./native"] resolves dload("tls")
+# so --ffi-search-path ./native resolves dload("tls")
 ```
 
-Consume from a sibling checkout, or a git dep plus `coil.lock` pin. See [docs/consume.md](docs/consume.md).
-
-```toml
-[dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
-```
-
-`{ git }` is the parseable form. `version` is optional schema, not a tag. The pin is `coil.lock` `rev` + `content_hash`. Spool will own Coil-to-Coil deps once it exists ([COI-219](https://linear.app/ardax/issue/COI-219)). There is no `spool add` yet. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
+Consume with `spool add tls --git https://github.com/ardax-corp/coil-tls.git --rev <commit SHA>` (no tags yet), or a sibling checkout plus `--root`, `--ffi-search-path`, `--allow-dload tls`, `--dload-trusted tls` (or `--dload-pin`) and `--allow-attach`. spool does not build `libtls`. See [docs/consume.md](docs/consume.md).
 
 ## License
 
