@@ -1,30 +1,25 @@
 # Consuming coil-tls
 
-This package is `tls`. `use tls::{client, server}` and `use tls::{alpn_protocol}` resolve from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call `dload("tls")` inside the package. Put the built library on `[ffi] search_paths`. Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204)).
-
-Coil-to-Coil deps will be spool-owned once a public `spool` CLI exists. Until [COI-219](https://linear.app/ardax/issue/COI-219) the pin is `coil.lock` `rev` + `content_hash`. `{ git }` is the parseable git form. `version` and `rev` are optional schema, stored only, not a required tag. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
+This package is `tls`. `use tls::{client, server}` and `use tls::{alpn_protocol}` resolve from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call `dload("tls")` inside the package. Put the built library on the FFI search path (`--ffi-search-path`). Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204)).
 
 API: [api.md](api.md). Handshake demo: [examples/loopback.hy](../examples/loopback.hy).
 
 ## Sibling checkout
 
-In the consumer `coil.toml`:
-
-```toml
-[module]
-roots = ["./src", "../coil-tls/src"]
-
-[ffi]
-search_paths = ["../coil-tls/native"]
-```
-
-Build the native library from this package root:
+Clone this repo next to your project and build the native library from this package root:
 
 ```bash
 make -C native artifact
 ```
 
-`libtls.so` (or `.dylib` / `tls.dll`) must sit on `[ffi] search_paths` so `dload("tls")` resolves. The run needs `--allow-dload tls` and `--dload-trusted tls` (or `--dload-pin tls=SHA256`); spool passes the second from `trusted = true` on the dependency or a `coil.lock` native pin. `roots` must include this package's `src/` so `use tls::{client, server}` resolves here.
+`make artifact` copies `libtls.so` (or `.dylib` / `tls.dll`) into `native/`. coil reads no `coil.toml` and no `coil.lock`, so pass everything as flags:
+
+```bash
+coil --root ../coil-tls/src --ffi-search-path ../coil-tls/native \
+  --allow-dload tls --dload-trusted tls --allow-attach --allow-net main.hy
+```
+
+`--dload-pin tls=<sha256 of libtls.so>` instead of `--dload-trusted tls` pins the build. `enable` needs `--allow-attach` (`Stream.attach`). Opening the TCP stream needs `--allow-net`.
 
 Then:
 
@@ -36,46 +31,31 @@ use tls::{alpn_protocol};
 let s = enable(tcp, "example.com", new ClientOpts(true, Option::None, Option::None, 0, ""))?;
 ```
 
-## coil.lock pin (until spool)
-
-`{ git }` is the parseable git form. `version` and `rev` may appear as optional schema; they are stored only, not a required tag. This repo has no tags. Do not run `spool add tls`. There is no public spool CLI.
-
-Until [COI-219](https://linear.app/ardax/issue/COI-219) the pin is `coil.lock` `rev` + `content_hash`. The compiler does not read `coil.lock` and does not inject roots. Native libs stay on `[ffi] search_paths` until [COI-60](https://linear.app/ardax/issue/COI-60).
-
-```toml
-[dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
-
-[module]
-roots = ["./src", "./.spool/deps/tls/src"]
-
-[ffi]
-search_paths = ["./.spool/deps/tls/native"]
-```
-
-Pin the commit in `coil.lock` with `git`, `rev`, and `content_hash`. Omit `tag`. `version` in the manifest is optional schema, not a resolved tag.
-
-```
-# spool lockfile v1
-[[package]]
-name = 'tls'
-git = 'https://github.com/ardax-corp/coil-tls.git'
-rev = '053bf366b346304f4e9be3b8a0ffabb5d2d41f56'
-content_hash = 'f3dfe09e8feb1edb85f6beb7f8981c7fab2b59bf'
-```
-
-`rev` is the commit. `content_hash` is that commit's git tree (`git rev-parse 'HEAD^{tree}'`). Replace both when you move the pin. The values above are `main` at `053bf36` (enable via `Stream.attach`). They are an example, not a release.
-
-Clone that rev onto the path listed in `roots`. `.spool/deps/tls` is the layout spool will use later:
+## With spool
 
 ```bash
-git clone https://github.com/ardax-corp/coil-tls.git .spool/deps/tls
-git -C .spool/deps/tls checkout --detach 053bf366b346304f4e9be3b8a0ffabb5d2d41f56
-test "$(git -C .spool/deps/tls rev-parse 'HEAD^{tree}')" = f3dfe09e8feb1edb85f6beb7f8981c7fab2b59bf
-make -C .spool/deps/tls/native artifact
+spool add tls --git https://github.com/ardax-corp/coil-tls.git --rev <commit SHA>
 ```
 
-`make artifact` copies `libtls.so` (or `.dylib` / `tls.dll`) into that `native/` dir. Leave it on `[ffi] search_paths`. Spool will not fetch the cdylib until [COI-60](https://linear.app/ardax/issue/COI-60).
+This repo has no tags, so pin a commit with `--rev`. spool records the dep, writes `coil.lock` (`rev` + `content_hash`), links `.spool/deps/tls` to the checkout's `src/`, and passes `--root` for it. spool does not build or fetch `libtls`; build it in a checkout (above) and grant it in the consumer `coil.toml`:
+
+```toml
+[module]
+roots = ["./src", ".spool/deps/tls"]
+
+[permissions]
+net = true
+attach = true
+
+[ffi]
+search_paths = ["../coil-tls/native"]
+allow = ["tls"]
+
+[dependencies]
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", rev = "<commit SHA>", trusted = true }
+```
+
+The extra root is needed because `tls::client` / `tls::server` live in `src/tls/`: through the `.spool/deps` root alone, `use tls::client::{…}` looks for `src/client.hy` and fails. `trusted = true` gives `--dload-trusted tls`. A `[[package.native]]` row with `sha256` under the `tls` package in `coil.lock` gives `--dload-pin tls=SHA256` instead.
 
 ## Migrating from virtual `io::net::tls`
 
