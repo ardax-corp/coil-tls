@@ -1,5 +1,6 @@
 // Lower-level C ABI Session helpers. Not the HTTP-facing Stream API.
 // File-fd coverage lives in native rust tests. Handshake stays in examples/loopback.hy.
+use tests::assert;
 use io::{IoError};
 use tls::abi::{enable_client_fd, enable_server_fd, alpn_protocol, Session};
 
@@ -19,7 +20,7 @@ test("abi server enable empty cert is Err") {
         Result::Ok(_) => false,
         Result::Err(e) => is_cert_or_invalid(e),
     };
-    assert(ok, "expected Certificate or InvalidInput")?;
+    assert!(ok, "expected Certificate or InvalidInput");
 }
 
 test("abi server enable bad pem is Err") {
@@ -28,7 +29,7 @@ test("abi server enable bad pem is Err") {
         Result::Ok(_) => false,
         Result::Err(e) => is_cert_or_invalid(e),
     };
-    assert(ok, "expected Certificate or InvalidInput")?;
+    assert!(ok, "expected Certificate or InvalidInput");
 }
 
 test("abi client enable empty host is Err") {
@@ -37,7 +38,7 @@ test("abi client enable empty host is Err") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("abi alpn_protocol of ptr 0 is InvalidInput") {
@@ -47,5 +48,5 @@ test("abi alpn_protocol of ptr 0 is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }

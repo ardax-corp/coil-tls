@@ -1,6 +1,7 @@
 // Userland enable/disable/opts smoke. Handshake round-trips stay in examples/loopback.hy.
 // enable(Stream, host, ClientOpts) must typecheck; file Stream is InvalidInput.
 // Do not wrap a second Stream type. Do not import io::__tls.
+use tests::assert;
 use io::{open, IoError};
 use tls::client::{enable, disable, ClientOpts};
 use tls::server::{enable as server_enable, disable as server_disable, ServerOpts};
@@ -15,7 +16,7 @@ test("client enable on a file Stream is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("server enable on a file Stream is InvalidInput") {
@@ -27,7 +28,7 @@ test("server enable on a file Stream is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("alpn_protocol on a file Stream is InvalidInput") {
@@ -39,7 +40,7 @@ test("alpn_protocol on a file Stream is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("disable on a file Stream is InvalidInput") {
@@ -51,7 +52,7 @@ test("disable on a file Stream is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("server disable on a file Stream is InvalidInput") {
@@ -63,7 +64,7 @@ test("server disable on a file Stream is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("client enable empty host is InvalidInput") {
@@ -75,7 +76,7 @@ test("client enable empty host is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
 
 test("server enable bad pem is InvalidInput") {
@@ -87,5 +88,5 @@ test("server enable bad pem is InvalidInput") {
         Result::Ok(_) => false,
         Result::Err(e) => e == IoError::InvalidInput,
     };
-    assert(ok, "expected InvalidInput")?;
+    assert!(ok, "expected InvalidInput");
 }
