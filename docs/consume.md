@@ -41,7 +41,7 @@ This repo has no tags, so pin a commit with `--rev`. spool records the dep, writ
 
 ```toml
 [module]
-roots = ["./src", ".spool/deps/tls"]
+roots = ["./src"]
 
 [permissions]
 net = true
@@ -55,7 +55,7 @@ allow = ["tls"]
 tls = { git = "https://github.com/ardax-corp/coil-tls.git", rev = "<commit SHA>", trusted = true }
 ```
 
-The extra root is needed because `tls::client` / `tls::server` live in `src/tls/`: through the `.spool/deps` root alone, `use tls::client::{…}` looks for `src/client.hy` and fails. `trusted = true` gives `--dload-trusted tls`. A `[[package.native]]` row with `sha256` under the `tls` package in `coil.lock` gives `--dload-pin tls=SHA256` instead.
+spool passes the checkout's `src/` as a root too (spool#30), so `use tls::client::{…}` resolves to `src/tls/client.hy` with no extra roots. `trusted = true` gives `--dload-trusted tls`. A `[[package.native]]` row with `sha256` under the `tls` package in `coil.lock` gives `--dload-pin tls=SHA256` instead.
 
 ## Migrating from virtual `io::net::tls`
 
