@@ -30,7 +30,7 @@ cargo build --release --manifest-path native/Cargo.toml
 # so --ffi-search-path ./native resolves dload("tls")
 ```
 
-Consume with `spool add tls --git https://github.com/ardax-corp/coil-tls.git --rev <commit SHA>` (no tags yet), or a sibling checkout plus `--root`, `--ffi-search-path`, `--allow-dload tls`, `--dload-trusted tls` (or `--dload-pin`) and `--allow-attach`. spool does not build `libtls`. See [docs/consume.md](docs/consume.md).
+Consume with `spool add tls --git https://github.com/ardax-corp/coil-tls.git --rev <commit SHA>` (no tags yet), or a sibling checkout plus `--root`, `--ffi-search-path`, `--allow-dload tls`, `--dload-trusted tls` (or `--dload-pin`) and `--allow-attach`; `coil package` also needs `--ffi-native name=tls,version=0.1.0,path=<native dir>`. spool reads this repo's `[ffi] search_paths` and `[[ffi.native]]` from its checkout, but does not build `libtls`. See [docs/consume.md](docs/consume.md).
 
 ## License
 

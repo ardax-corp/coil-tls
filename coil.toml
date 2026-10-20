@@ -7,3 +7,11 @@ roots = ["./src"]
 
 [ffi]
 search_paths = ["./native"]
+
+# The library `dload("tls")` loads, for `coil package` (--ffi-native). spool
+# resolves `path` against this checkout and passes the row when a consumer
+# runs `spool build` / `spool run` (spool#38).
+[[ffi.native]]
+name = "tls"
+version = "0.1.0"
+path = "./native"

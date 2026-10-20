@@ -3,8 +3,9 @@
 // released ptr is a no-op. Prefer `tls::client::enable` for HTTP.
 //
 // No `extern "tls"` / `extern "c"`: worker VMs do not run ffi_init, so those
-// handles are invalid. dload + invoke, with `./native/libtls.so` as fallback
-// when spawn workers have empty FFI search paths.
+// handles are invalid. dload + invoke. Spawned workers inherit the FFI search
+// paths, so `dload("tls")` is the only lookup: a path literal would be a second
+// constant stem that `coil package` cannot pin (coil-tls#17).
 
 use io::{Stream, IoError, write, read};
 use ffi::{declare, dload, invoke, Error};
@@ -60,16 +61,8 @@ fn verify_int(bool v) -> int {
 }
 
 fn tls_lib() -> Result<int, IoError> {
-    match dload("tls") {
-        Result::Ok(h) => {
-            return h;
-        },
-        Result::Err(_) => 0,
-    };
-    match dload("./native/libtls.so") {
-        Result::Ok(h) => {
-            return h;
-        },
+    return match dload("tls") {
+        Result::Ok(h) => h,
         Result::Err(_) => {
             raise IoError::NotFound;
         },
@@ -77,15 +70,7 @@ fn tls_lib() -> Result<int, IoError> {
 }
 
 fn native_last_error() -> Result<string, Error> {
-    let lib = match dload("tls") {
-        Result::Ok(h) => h,
-        Result::Err(_) => {
-            match dload("./native/libtls.so") {
-                Result::Ok(h) => h,
-                Result::Err(e) => { raise e; },
-            }
-        },
-    };
+    let lib = dload("tls")?;
     let last_fn = declare(lib, "coil_tls_last_error", (), String)?;
     return invoke(lib, last_fn, ())?;
 }
