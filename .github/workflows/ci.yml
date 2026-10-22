@@ -12,6 +12,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# `actions: write` lets a failed job cancel the rest of its run.
+permissions:
+  contents: read
+  actions: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -32,6 +37,16 @@ jobs:
 
       - name: Release cdylib
         run: cargo build --release
+
+      # Fail fast on pull requests: a failed job cancels the rest of the run,
+      # so a quick fix doesn't wait behind jobs that are already moot.
+      - name: Cancel the rest of the run
+        if: failure() && github.event_name == 'pull_request'
+        continue-on-error: true
+        shell: bash
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   coil:
     name: coil test
@@ -108,3 +123,13 @@ jobs:
           out=$(cd "$RUNNER_TEMP" && "$app/loopback")
           echo "$out"
           test "$out" = "ok"
+
+      # Fail fast on pull requests: a failed job cancels the rest of the run,
+      # so a quick fix doesn't wait behind jobs that are already moot.
+      - name: Cancel the rest of the run
+        if: failure() && github.event_name == 'pull_request'
+        continue-on-error: true
+        shell: bash
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
