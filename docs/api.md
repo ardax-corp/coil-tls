@@ -6,7 +6,7 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 
 ## In-place upgrade
 
-`client::enable` / `server::enable` take a TCP `Stream` and return that same `Stream` with TLS attached via generic `Stream.attach`. coil-http keeps `enable(stream, host, opts) -> Result<Stream, IoError>`. Do not wrap a second Stream type. Do not use `enable(fd) -> Session` as the HTTP-facing API.
+`client::enable` / `server::enable` take a TCP `Stream` and return that same `Stream` with TLS attached via generic `Stream.attach`. coil-http keeps `enable(stream, host, opts) -> Result<Stream, TlsError>`. Do not wrap a second Stream type. Do not use `enable(fd) -> Session` as the HTTP-facing API.
 
 Enable is dload create (`coil_tls_*_enable`, Stream marshals to fd) + `s.attach(session, read, write, shutdown, free)` + empty `write`/`read` until Ready. `WouldBlock` parks with `s.park()` (`reactor_wait_fd_no_help`, COI-116). Do not retry `enable` for the same handshake. After attach, `s.read()` / `s.write()` / Drop go through the C vtable. This package does not import leftover `io::__tls`.
 
@@ -44,9 +44,21 @@ Call sites pass `new ClientOpts(...)` / `new ServerOpts(...)`. Handles are not t
 | `server::disable(stream)` | Same teardown as client disable |
 | `alpn_protocol(stream)` | Negotiated ALPN, or `""` |
 
-All return `Result<_, IoError>`. `timeout_ms <= 0` means no handshake deadline. Extra `ca_pem` / `ca_path` **append** to webpki roots when `verify` is true. Empty `client_ca_pem` means no mTLS. `alpn` is `""`, `"h2"`, `"http/1.1"`, or a comma list.
+All return `Result<_, TlsError>`. `timeout_ms <= 0` means no handshake deadline. Extra `ca_pem` / `ca_path` **append** to webpki roots when `verify` is true. Empty `client_ca_pem` means no mTLS. `alpn` is `""`, `"h2"`, `"http/1.1"`, or a comma list.
 
-A non-TCP Stream (for example a file from `open`) is `InvalidInput`. Successful empty write means handshake is done; empty read/write still pump handshake.
+A non-TCP Stream (for example a file from `open`) is `TlsError::Io(IoError::InvalidInput)`.
+
+## Errors
+
+`tls::error::TlsError` (derives `Show` and `Eq`):
+
+| Variant | When |
+|---|---|
+| `Certificate` | the peer's certificate (or the configured one) was rejected |
+| `Handshake` | the TLS handshake or record layer failed |
+| `Io(IoError)` | the socket failed, or the input was invalid (a non-TCP Stream, a bad PEM) |
+
+`IoError` itself has no TLS variants: a TLS stream's own `read` / `write` report `IoError::Protocol` on a TLS failure. Successful empty write means handshake is done; empty read/write still pump handshake.
 
 ## C ABI (`tls::abi`)
 
