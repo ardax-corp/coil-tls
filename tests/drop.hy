@@ -7,6 +7,7 @@
 use tests::assert;
 use gc::{collect};
 use io::{IoError};
+use tls::error::{TlsError};
 use tls::abi::{Session, disable};
 
 test("session drop of ptr 0 is a no-op") {
@@ -27,7 +28,7 @@ test("session drop after disable of ptr 0 is safe") {
     let r = disable(s, -1);
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => e == IoError::InvalidInput,
+        Result::Err(e) => e == TlsError::Io(IoError::InvalidInput),
     };
     assert!(ok, "expected InvalidInput");
     s.drop();

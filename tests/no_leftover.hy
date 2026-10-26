@@ -3,15 +3,16 @@
 use tests::assert;
 use tls::client::{enable, ClientOpts};
 use io::{open, IoError};
+use tls::error::{TlsError};
 
 test("enable does not import leftover io::__tls") {
     let r = match open("/tmp/coil_tls_no_leftover.bin", "w") {
         Result::Ok(s) => enable(s, "127.0.0.1", new ClientOpts(false, Option::None, Option::None, 0, "")),
-        Result::Err(_) => Result::Err(IoError::Other),
+        Result::Err(_) => Result::Err(TlsError::Io(IoError::Other)),
     };
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => e == IoError::InvalidInput,
+        Result::Err(e) => e == TlsError::Io(IoError::InvalidInput),
     };
     assert!(ok, "expected InvalidInput without leftover");
 }

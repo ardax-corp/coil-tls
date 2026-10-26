@@ -2,13 +2,14 @@
 // File-fd coverage lives in native rust tests. Handshake stays in examples/loopback.hy.
 use tests::assert;
 use io::{IoError};
+use tls::error::{TlsError};
 use tls::abi::{enable_client_fd, enable_server_fd, alpn_protocol, Session};
 
-fn is_cert_or_invalid(IoError e) -> bool {
-    if e == IoError::Certificate {
+fn is_cert_or_invalid(TlsError e) -> bool {
+    if e == TlsError::Certificate {
         return true;
     }
-    if e == IoError::InvalidInput {
+    if e == TlsError::Io(IoError::InvalidInput) {
         return true;
     }
     return false;
@@ -36,7 +37,7 @@ test("abi client enable empty host is Err") {
     let r = enable_client_fd(-1, "", false, Option::None, Option::None, 0, "");
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => e == IoError::InvalidInput,
+        Result::Err(e) => e == TlsError::Io(IoError::InvalidInput),
     };
     assert!(ok, "expected InvalidInput");
 }
@@ -46,7 +47,7 @@ test("abi alpn_protocol of ptr 0 is InvalidInput") {
     let r = alpn_protocol(s);
     let ok = match r {
         Result::Ok(_) => false,
-        Result::Err(e) => e == IoError::InvalidInput,
+        Result::Err(e) => e == TlsError::Io(IoError::InvalidInput),
     };
     assert!(ok, "expected InvalidInput");
 }
