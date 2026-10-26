@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -111,3 +112,159 @@ jobs:
           out=$(cd "$RUNNER_TEMP" && "$app/loopback")
           echo "$out"
           test "$out" = "ok"
+
+      # The library CI built and tested, as the edge / release asset (the
+      # `publish` job below).
+      - name: Package native library
+        working-directory: coil-tls
+        run: |
+          mkdir -p dist/pkg/native
+          cp native/libtls.so dist/pkg/native/
+          tar -C dist/pkg -czf dist/coil-tls-native-x86_64-unknown-linux-gnu.tar.gz native
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-x86_64-unknown-linux-gnu
+          path: coil-tls/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # macOS and Windows builds of the native library, for the edge / release
+  # assets only: pull requests build and test on Linux alone.
+  native-release:
+    name: native (${{ matrix.id }})
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos
+            triple: aarch64-apple-darwin
+            os: macos-latest
+          - id: windows-gnu
+            triple: x86_64-pc-windows-gnu
+            os: windows-latest
+            windows: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # MinGW gcc for ring / cc-built C parts (MSVC + MinGW is an ABI mismatch).
+      - name: Install deps (Windows)
+        if: matrix.windows
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-toolchain
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.windows && 'stable-x86_64-pc-windows-gnu' || 'stable' }}
+
+      - name: Build
+        if: ${{ !matrix.windows }}
+        working-directory: native
+        run: make artifact
+
+      - name: Build (Windows gnu)
+        if: matrix.windows
+        shell: msys2 {0}
+        working-directory: native
+        run: |
+          cargo_bin="$(cygpath -u "${CARGO_HOME:-$USERPROFILE/.cargo}")/bin"
+          export PATH="$MINGW_PREFIX/bin:$cargo_bin:/usr/bin:$PATH"
+          make artifact
+
+      - name: Package native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib=""
+          for f in native/libtls.dylib native/libtls.dll native/tls.dll; do
+            if [ -f "$f" ]; then lib="$f"; fi
+          done
+          test -n "$lib"
+          mkdir -p dist/pkg/native
+          cp "$lib" dist/pkg/native/
+          tar -C dist/pkg -czf "dist/coil-tls-native-${{ matrix.triple }}.tar.gz" native
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.triple }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # The native library of every target (Linux from `coil`, macOS and
+  # Windows from `native-release`), once all of CI is green: a push to main
+  # replaces the rolling `edge` pre-release, a v* tag gets a release of its
+  # own. Each archive unpacks `native/libtls.*` (`native/tls.dll` on Windows) into a coil-tls
+  # checkout; SHA256SUMS also lists each library for `--dload-pin`.
+  publish:
+    name: publish (${{ github.ref_type == 'tag' && github.ref_name || 'edge' }})
+    needs: [coil, native-release]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum -- *.tar.gz > SHA256SUMS
+          for a in *.tar.gz; do
+            d="$(mktemp -d)"
+            tar -C "$d" -xzf "$a"
+            (cd "$d" && sha256sum native/*) | sed "s|  native/|  ${a%.tar.gz}/|" >> SHA256SUMS
+          done
+          cat SHA256SUMS
+
+      - name: Update the edge release
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git tag -f edge "$GITHUB_SHA"
+          git push -f origin refs/tags/edge
+          notes="Rolling pre-release of the coil-tls native library, rebuilt from main after every green CI run.
+
+          Commit: ${GITHUB_SHA}
+          Built: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          Not a stable release: the archives and this tag are replaced on every build.
+          \`coil-tls-native-<triple>.tar.gz\` holds \`native/libtls.*\` (unpack it in the package root); \`SHA256SUMS\` lists the archives and the libraries (for \`--dload-pin\`)."
+          if gh release view edge >/dev/null 2>&1; then
+            gh release edit edge --prerelease --title "edge" --notes "$notes"
+          else
+            gh release create edge --prerelease --verify-tag --title "edge" --notes "$notes"
+          fi
+          gh release upload edge dist/*.tar.gz dist/SHA256SUMS --clobber
+          # Drop assets this build did not produce (e.g. a removed target).
+          gh release view edge --json assets -q '.assets[].name' | while read -r name; do
+            if [[ ! -e "dist/$name" ]]; then
+              gh release delete-asset edge "$name" --yes
+            fi
+          done
+
+      - name: Publish the tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --title "$tag" \
+              --notes "coil-tls $tag: \`coil-tls-native-<triple>.tar.gz\` holds \`native/libtls.*\` (unpack it in the package root); \`SHA256SUMS\` lists the archives and the libraries (for \`--dload-pin\`)."
+          fi
+          gh release upload "$tag" dist/*.tar.gz dist/SHA256SUMS --clobber
