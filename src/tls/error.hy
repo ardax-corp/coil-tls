@@ -13,7 +13,7 @@ enum TlsError {
     Io(IoError),
 }
 
-/// A native tag name (`tls.h`) as a `TlsError`.
+// A native tag name (`tls.h`) as a `TlsError`.
 fn tls_error_from_name(string tag) -> TlsError {
     if tag == "Certificate" {
         return TlsError::Certificate;
@@ -24,7 +24,7 @@ fn tls_error_from_name(string tag) -> TlsError {
     return TlsError::Io(io_error_from_name(tag));
 }
 
-/// A native tag name as the `IoError` of a stream call.
+// A native tag name as the `IoError` of a stream call.
 fn io_error_from_name(string tag) -> IoError {
     if tag == "WouldBlock" {
         return IoError::WouldBlock;
