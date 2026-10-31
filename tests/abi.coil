@@ -1,5 +1,5 @@
 // Lower-level C ABI Session helpers. Not the HTTP-facing Stream API.
-// File-fd coverage lives in native rust tests. Handshake stays in examples/loopback.hy.
+// File-fd coverage lives in native rust tests. Handshake stays in examples/loopback.coil.
 use tests::assert;
 use io::{IoError};
 use tls::error::{TlsError};

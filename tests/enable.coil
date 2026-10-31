@@ -1,4 +1,4 @@
-// Userland enable/disable/opts smoke. Handshake round-trips stay in examples/loopback.hy.
+// Userland enable/disable/opts smoke. Handshake round-trips stay in examples/loopback.coil.
 // enable(Stream, host, ClientOpts) must typecheck; file Stream is InvalidInput.
 // Do not wrap a second Stream type. Do not import io::__tls.
 use tests::assert;
