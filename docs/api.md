@@ -2,15 +2,13 @@
 
 Module: `use tls::{client, server, alpn_protocol};` (package name `tls` from `coil.toml`). How to depend: [consume.md](consume.md).
 
-Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls-design-v1-d4fd96ddc404).
-
 ## In-place upgrade
 
 `client::enable` / `server::enable` take a TCP `Stream` and return that same `Stream` with TLS attached via generic `Stream.attach`. coil-http keeps `enable(stream, host, opts) -> Result<Stream, TlsError>`. Do not wrap a second Stream type. Do not use `enable(fd) -> Session` as the HTTP-facing API.
 
-Enable is dload create (`coil_tls_*_enable`, Stream marshals to fd) + `s.attach(session, read, write, shutdown, free)` + empty `write`/`read` until Ready. `WouldBlock` parks with `s.park()` (`reactor_wait_fd_no_help`, COI-116). Do not retry `enable` for the same handshake. After attach, `s.read()` / `s.write()` / Drop go through the C vtable. This package does not import leftover `io::__tls`.
+Enable is dload create (`coil_tls_*_enable`, Stream marshals to fd) + `s.attach(session, read, write, shutdown, free)` + empty `write`/`read` until Ready. `WouldBlock` parks with `s.park()` (`reactor_wait_fd_no_help`). Do not retry `enable` for the same handshake. After attach, `s.read()` / `s.write()` / Drop go through the C vtable. This package does not import leftover `io::__tls`.
 
-C ABI `Session` helpers are `tls::abi`. They talk `coil_tls_*` and do **not** attach. After attach, the Stream owns free; `Session.drop` of a released pointer is a no-op. `Session.drop` before attach still calls `coil_tls_free`.
+C ABI `Session` helpers are `tls::abi`, which is package-internal (not part of the documented API). They talk `coil_tls_*` and do **not** attach. After attach, the Stream owns free; `Session.drop` of a released pointer is a no-op. `Session.drop` before attach still calls `coil_tls_free`.
 
 ## Types
 
