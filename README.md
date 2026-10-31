@@ -4,8 +4,6 @@ TLS for [coil](https://github.com/ardax-corp/coil-lang) streams. `tls::client::e
 
 Package name is `tls`, so `use tls::{client, server}` and `use tls::alpn_protocol` keep working after the virtual `io::net::tls` module is removed.
 
-Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls-design-v1-d4fd96ddc404) (accepted [COI-205](https://linear.app/ardax/issue/COI-205)).
-
 ## Layout
 
 | Path | Role |
@@ -18,7 +16,7 @@ Locked design: [coil-tls design (v1)](https://linear.app/ardax/document/coil-tls
 | `native/` | rustls 0.23 cdylib, leftover-shaped `coil_tls_*` plus attach hooks |
 | `docs/` | API and consume notes |
 
-Handshake stays non-blocking. One rustls step per call, then `Stream.park` on WouldBlock ([COI-116](https://linear.app/ardax/issue/COI-116)). Do not handshake on a blocking thread.
+Handshake stays non-blocking. One rustls step per call, then `Stream.park` on WouldBlock. Do not handshake on a blocking thread.
 
 Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Stream.attach` / `Stream.park`; leftover TLS deleted).
 
