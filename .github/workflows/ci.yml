@@ -48,7 +48,7 @@ jobs:
       - name: Forbid leftover io::__tls import
         working-directory: coil-tls
         run: |
-          if grep -R --include='*.hy' -E '^[[:space:]]*use io::__tls' src tests examples; then
+          if grep -R --include='*.coil' -E '^[[:space:]]*use io::__tls' src tests examples; then
             echo "use io::__tls is forbidden in this package"
             exit 1
           fi
@@ -84,7 +84,7 @@ jobs:
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(coil --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.hy)
+          out=$(coil --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.coil)
           echo "$out"
           test "$out" = "ok"
 
@@ -94,7 +94,7 @@ jobs:
       - name: Forbid path dload literals
         working-directory: coil-tls
         run: |
-          if grep -R --include='*.hy' -nE 'dload\("[^"]*[/.][^"]*"\)' src; then
+          if grep -R --include='*.coil' -nE 'dload\("[^"]*[/.][^"]*"\)' src; then
             echo "dload a stem (\"tls\"), not a path: coil package cannot pin a path literal"
             exit 1
           fi
@@ -107,7 +107,7 @@ jobs:
           mkdir -p "$app/lib"
           coil package --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" \
             --root src --root "${{ steps.coil.outputs.stdlib }}" \
-            --ffi-native "name=tls,version=0.1.0,path=native" -o "$app/loopback" examples/loopback.hy
+            --ffi-native "name=tls,version=0.1.0,path=native" -o "$app/loopback" examples/loopback.coil
           cp native/libtls.so "$app/lib/"
           out=$(cd "$RUNNER_TEMP" && "$app/loopback")
           echo "$out"

@@ -8,11 +8,11 @@ Package name is `tls`, so `use tls::{client, server}` and `use tls::alpn_protoco
 
 | Path | Role |
 |------|------|
-| `src/tls/client.hy` | `tls::client`: `enable(Stream, host, ClientOpts)` / `disable(Stream)`, the client handshake |
-| `src/tls/server.hy` | `tls::server`: `enable(Stream, ServerOpts)` / `disable(Stream)`, the server handshake |
-| `src/tls.hy` | `tls`: `alpn_protocol(Stream)` |
-| `src/tls/error.hy` | `tls::error`: `TlsError`, the error of every call |
-| `src/tls/abi.hy` | package-internal C ABI `Session` helpers (`coil_tls_*`); not the public API |
+| `src/tls/client.coil` | `tls::client`: `enable(Stream, host, ClientOpts)` / `disable(Stream)`, the client handshake |
+| `src/tls/server.coil` | `tls::server`: `enable(Stream, ServerOpts)` / `disable(Stream)`, the server handshake |
+| `src/tls.coil` | `tls`: `alpn_protocol(Stream)` |
+| `src/tls/error.coil` | `tls::error`: `TlsError`, the error of every call |
+| `src/tls/abi.coil` | package-internal C ABI `Session` helpers (`coil_tls_*`); not the public API |
 | `native/` | rustls 0.23 cdylib, leftover-shaped `coil_tls_*` plus attach hooks |
 | `docs/` | API and consume notes |
 
@@ -22,7 +22,7 @@ Needs [coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204) (`Strea
 
 ## Example
 
-An HTTPS request (`main.hy`):
+An HTTPS request (`main.coil`):
 
 ```coil
 use io::{IoError};
@@ -56,10 +56,10 @@ With this repo and [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) clon
 
 ```bash
 coil --root ../coil-tls/src --root ../coil-stdlib/src --ffi-search-path ../coil-tls/native \
-  --allow-dload tls --dload-trusted tls --allow-attach --allow-net main.hy
+  --allow-dload tls --dload-trusted tls --allow-attach --allow-net main.coil
 ```
 
-A client and server handshake over loopback is in [examples/loopback.hy](examples/loopback.hy).
+A client and server handshake over loopback is in [examples/loopback.coil](examples/loopback.coil).
 
 ## Build
 
