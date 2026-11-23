@@ -1,6 +1,6 @@
 # coil-tls
 
-TLS for [coil](https://github.com/ardax-corp/coil-lang) streams. `tls::client::enable` and `tls::server::enable` upgrade a TCP `Stream` to TLS in place, so the same stream's `read` / `write` are then encrypted; `tls::alpn_protocol` reads the negotiated protocol. rustls lives in a Rust cdylib (`libtls.so` / `.dylib` / `.dll`) loaded with `dload("tls")`, not in the interpreter.
+TLS for [coil](https://github.com/ardax-corp/coil-lang) streams. `tls::client::enable` and `tls::server::enable` upgrade a TCP `Stream` to TLS in place, so the same stream's `read` / `write` are then encrypted; `tls::alpn_protocol` reads the negotiated protocol. rustls lives in a Rust cdylib (`libtls.so` / `.dylib` / `.dll`) called through an `extern "tls"` block, not built into coil.
 
 Package name is `tls`, so `use tls::{client, server}` and `use tls::alpn_protocol` keep working after the virtual `io::net::tls` module is removed.
 
@@ -68,7 +68,7 @@ make -C native artifact   # cargo build --release, then copies libtls.so (or .dy
 make -C native test       # the native library's own tests
 ```
 
-`--ffi-search-path ./native` then resolves `dload("tls")`. Prebuilt libraries for Linux, macOS and Windows are on the [`edge` release](https://github.com/ardax-corp/coil-tls/releases/tag/edge): unpack `coil-tls-native-<triple>.tar.gz` in the checkout root to get `native/libtls.*` (`SHA256SUMS` lists each library for `--dload-pin`).
+`--ffi-search-path ./native` then finds the `extern "tls"` library. Prebuilt libraries for Linux, macOS and Windows are on the [`edge` release](https://github.com/ardax-corp/coil-tls/releases/tag/edge): unpack `coil-tls-native-<triple>.tar.gz` in the checkout root to get `native/libtls.*` (`SHA256SUMS` lists each library for `--dload-pin`).
 
 ## Test
 
