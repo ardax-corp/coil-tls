@@ -76,6 +76,8 @@ jobs:
         id: coil
         run: |
           cargo build --release --manifest-path .coil-lang/Cargo.toml --bin coil --bin coil-test
+          # `coil package` links the native runtime from beside the coil binary.
+          cargo build --release --manifest-path .coil-lang/Cargo.toml -p coil-rt
           echo "$PWD/.coil-lang/target/release" >> "$GITHUB_PATH"
           echo "stdlib=$PWD/.coil-stdlib/src" >> "$GITHUB_OUTPUT"
 
