@@ -1,6 +1,6 @@
 // Client side of TLS: `enable` upgrades a connected TCP `Stream` to TLS in
 // place (the same Stream, not a second Stream type) and `disable` sends
-// close_notify. Create via dload, then Stream.attach + park until the
+// close_notify. Create through the extern block, then Stream.attach + park until the
 // handshake is Ready.
 
 use io::{Stream};

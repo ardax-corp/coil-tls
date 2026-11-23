@@ -1,4 +1,4 @@
-// Pin that userland enable is dload + Stream.attach, not leftover HostInvoke.
+// Pin that userland enable is an extern call + Stream.attach, not leftover HostInvoke.
 // This file typechecks and runs without `use io::__tls`.
 use tests::assert;
 use tls::client::{enable, ClientOpts};

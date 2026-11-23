@@ -1,6 +1,6 @@
 // Server side of TLS: `enable` runs the server handshake on an accepted TCP
 // `Stream` in place, with the certificate and key in `ServerOpts`; `disable`
-// sends close_notify. Same dload + Stream.attach + park as the client.
+// sends close_notify. Same extern call + Stream.attach + park as the client.
 
 use io::{Stream};
 use tls::error::{TlsError};
