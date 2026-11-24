@@ -1,11 +1,10 @@
-// Client side of TLS: `enable` upgrades a connected TCP `Stream` to TLS in
-// place (the same Stream, not a second Stream type) and `disable` sends
-// close_notify. Create through the extern block, then Stream.attach + park until the
-// handshake is Ready.
+// Client side of TLS: `enable` runs the client handshake on a connected TCP
+// `Stream` and returns a `tls::stream::TlsStream` over it.
 
 use io::{Stream};
 use tls::error::{TlsError};
-use tls::abi::{create_client, attach_and_handshake, disable_stream};
+use tls::abi::{create_client};
+use tls::stream::{TlsStream, handshake};
 
 /// How `enable` sets up a client session: certificate checks, extra trusted
 /// roots, the handshake deadline and the ALPN protocols to offer.
@@ -42,17 +41,16 @@ class ClientOpts {
 }
 
 /// Runs a TLS client handshake on the connected TCP stream `s` and returns
-/// the same `Stream`, now encrypted.
+/// a `TlsStream` over it.
 ///
 /// `host` is the server name sent in SNI and checked against the server's
-/// certificate (a DNS name or an IP address). After `enable`, the stream's
-/// `read`, `write` and close go through TLS. The handshake does not block
-/// the thread: on `WouldBlock` it parks the task until the socket is ready,
-/// so call it from a normal task, not a blocking thread. Do not call
-/// `enable` twice on one stream.
+/// certificate (a DNS name or an IP address). The `TlsStream` implements
+/// `io::Read`, `io::Write` and `io::Close`; leave `s` to it from here on.
+/// The handshake does not block the thread: on `WouldBlock` it waits for
+/// the socket, which lets other tasks run.
 ///
-/// The program needs `--allow-attach`, `--allow-dload tls` and libtls on
-/// the FFI search path (see the package README).
+/// The program needs libtls on the FFI search path (see the package
+/// README).
 ///
 /// # Errors
 ///
@@ -83,24 +81,13 @@ class ClientOpts {
 ///     let s = enable(tcp, host, new ClientOpts(true, None, None, 10000, "http/1.1"))?;
 ///     let request = "GET / HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
 ///     write_all(s, to_bytes(request)).map_err(io_err)?;
-///     return read_to_end(s).map_err(io_err)?;
+///     let body = read_to_end(s).map_err(io_err)?;
+///     s.close().map_err(io_err)?;
+///     return body;
 /// }
 /// # fn main() {}
 /// ```
-fn enable(Stream s, string host, ClientOpts opts) -> Result<Stream, TlsError> {
-    let ptr = create_client(s, host, opts.verify, opts.ca_pem, opts.ca_path, opts.timeout_ms, opts.alpn)?;
-    return attach_and_handshake(s, ptr)?;
-}
-
-/// Sends TLS `close_notify` to the peer and returns `s`.
-///
-/// It only announces the end of the TLS session: the socket stays open and
-/// the session is freed when the stream is closed or dropped.
-///
-/// # Errors
-///
-/// `TlsError::Io(IoError::InvalidInput)` when `s` has no TLS session.
-// close_notify only. Stream Drop still owns free through the vtable.
-fn disable(Stream s) -> Result<Stream, TlsError> {
-    return disable_stream(s)?;
+fn enable(Stream s, string host, ClientOpts opts) -> Result<TlsStream, TlsError> {
+    let (fd, session) = create_client(s, host, opts.verify, opts.ca_pem, opts.ca_path, opts.timeout_ms, opts.alpn)?;
+    return handshake(s, fd, session)?;
 }
