@@ -66,6 +66,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-stdlib
+          ref: feature/native
           path: .coil-stdlib
 
       - uses: Swatinem/rust-cache@v2
@@ -97,12 +98,12 @@ jobs:
 
       - name: Run coil tests
         working-directory: coil-tls
-        run: coil test --allow-attach --allow-write --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native --root "${{ steps.coil.outputs.stdlib }}"
+        run: coil test --allow-write --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native --root "${{ steps.coil.outputs.stdlib }}"
 
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(coil --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.coil)
+          out=$(coil --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.coil)
           echo "$out"
           test "$out" = "ok"
 
@@ -123,7 +124,7 @@ jobs:
           set -euo pipefail
           app="$RUNNER_TEMP/pkg"
           mkdir -p "$app/lib"
-          coil package --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" \
+          coil package --allow-net --allow-dload tls --dload-pin "$TLS_PIN" \
             --root src --root "${{ steps.coil.outputs.stdlib }}" \
             --ffi-native "name=tls,version=0.1.0,path=native" -o "$app/loopback" examples/loopback.coil
           cp native/libtls.so "$app/lib/"
