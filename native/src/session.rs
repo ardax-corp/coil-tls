@@ -72,6 +72,12 @@ impl TlsSession {
         Ok(())
     }
 
+    /// Whether TLS records wait to be sent: a retry then waits for the
+    /// socket to take writes, not for it to have data.
+    pub fn wants_write(&self) -> bool {
+        self.conn.wants_write()
+    }
+
     pub fn alpn_protocol(&self) -> &[u8] {
         self.conn.alpn_protocol().unwrap_or(&[])
     }

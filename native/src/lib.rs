@@ -9,7 +9,6 @@ mod fd;
 mod session;
 
 use std::collections::HashMap;
-use std::ffi::c_void;
 use std::os::raw::c_char;
 use std::ptr;
 use std::sync::Mutex;
@@ -357,97 +356,22 @@ pub extern "C" fn coil_tls_disable(session: i64, fd: i64, err_out: *mut *const c
     unsafe { write_ok(err_out) };
 }
 
+/// 1 when the session has TLS records waiting to be sent (a read or write
+/// that returned WouldBlock is retried once the socket takes writes), 0
+/// when it waits for data from the peer, -1 for an invalid session.
+#[no_mangle]
+pub extern "C" fn coil_tls_wants_write(session: i64) -> i64 {
+    match unsafe { TlsSession::from_raw(session) } {
+        Ok(tls) => i64::from(tls.wants_write()),
+        Err(_) => -1,
+    }
+}
+
 /// Drop a session pointer. No-op for 0.
 #[no_mangle]
 pub extern "C" fn coil_tls_free(session: i64) {
     unregister_session(session);
     unsafe { TlsSession::free(session) };
-}
-
-/// Attach-shaped app read. `ptr` is the session; fd lives inside it.
-#[no_mangle]
-pub unsafe extern "C" fn coil_tls_stream_read(
-    ptr: *mut c_void,
-    buf: *mut u8,
-    len: usize,
-    err_out: *mut *const c_char,
-) -> i64 {
-    let session = ptr as i64;
-    let fd = match unsafe { TlsSession::from_raw(session) } {
-        Ok(tls) => tls.fd(),
-        Err(tag) => {
-            unsafe { write_err(err_out, tag) };
-            return -1;
-        }
-    };
-    coil_tls_read(session, fd, buf, len as i64, err_out)
-}
-
-/// Attach-shaped app write. `ptr` is the session; fd lives inside it.
-#[no_mangle]
-pub unsafe extern "C" fn coil_tls_stream_write(
-    ptr: *mut c_void,
-    buf: *const u8,
-    len: usize,
-    err_out: *mut *const c_char,
-) -> i64 {
-    let session = ptr as i64;
-    let fd = match unsafe { TlsSession::from_raw(session) } {
-        Ok(tls) => tls.fd(),
-        Err(tag) => {
-            unsafe { write_err(err_out, tag) };
-            return -1;
-        }
-    };
-    coil_tls_write(session, fd, buf, len as i64, err_out)
-}
-
-/// Attach-shaped close_notify. Must not free.
-#[no_mangle]
-pub unsafe extern "C" fn coil_tls_stream_shutdown(
-    ptr: *mut c_void,
-    err_out: *mut *const c_char,
-) -> i32 {
-    let session = ptr as i64;
-    let fd = match unsafe { TlsSession::from_raw(session) } {
-        Ok(tls) => tls.fd(),
-        Err(tag) => {
-            unsafe { write_err(err_out, tag) };
-            return -1;
-        }
-    };
-    coil_tls_disable(session, fd, err_out);
-    0
-}
-
-/// Attach-shaped Drop. Stream owns the session after attach.
-#[no_mangle]
-pub unsafe extern "C" fn coil_tls_stream_free(ptr: *mut c_void) {
-    coil_tls_free(ptr as i64);
-}
-
-/// Address of [`coil_tls_stream_read`] for `Stream.attach`.
-#[no_mangle]
-pub extern "C" fn coil_tls_stream_read_fn() -> i64 {
-    coil_tls_stream_read as usize as i64
-}
-
-/// Address of [`coil_tls_stream_write`] for `Stream.attach`.
-#[no_mangle]
-pub extern "C" fn coil_tls_stream_write_fn() -> i64 {
-    coil_tls_stream_write as usize as i64
-}
-
-/// Address of [`coil_tls_stream_shutdown`] for `Stream.attach`.
-#[no_mangle]
-pub extern "C" fn coil_tls_stream_shutdown_fn() -> i64 {
-    coil_tls_stream_shutdown as usize as i64
-}
-
-/// Address of [`coil_tls_stream_free`] for `Stream.attach`.
-#[no_mangle]
-pub extern "C" fn coil_tls_stream_free_fn() -> i64 {
-    coil_tls_stream_free as usize as i64
 }
 
 #[no_mangle]
@@ -1111,19 +1035,6 @@ mod tests {
     #[test]
     fn free_null_is_safe() {
         coil_tls_free(0);
-        unsafe { coil_tls_stream_free(ptr::null_mut()) };
-    }
-
-    #[test]
-    fn attach_fn_addresses_are_nonzero() {
-        assert_ne!(coil_tls_stream_read_fn(), 0);
-        assert_ne!(coil_tls_stream_write_fn(), 0);
-        assert_ne!(coil_tls_stream_shutdown_fn(), 0);
-        assert_ne!(coil_tls_stream_free_fn(), 0);
-        assert_eq!(
-            coil_tls_stream_read_fn(),
-            coil_tls_stream_read as usize as i64
-        );
     }
 
     #[test]
@@ -1133,13 +1044,12 @@ mod tests {
         let session = pump_client_enable(&s, "127.0.0.1", 0, "", 0, "").expect("enable");
         let fd = raw_fd(&s);
         assert_eq!(coil_tls_session_for_fd(fd), session);
-        let mut err: *const c_char = ptr::null();
-        let n = unsafe { coil_tls_stream_write(session as *mut _, ptr::null(), 0, &mut err) };
-        assert!(n >= 0, "{}", tag_of(err));
-        write_all(session, fd, b"hook-ok").expect("write");
+        assert_eq!(coil_tls_wants_write(session), 0);
+        write_all(session, fd, b"fd-ok").expect("write");
         let echoed = read_to_end(session, fd).expect("read");
-        assert_eq!(echoed, b"hook-ok");
-        unsafe { coil_tls_stream_shutdown(session as *mut _, &mut err) };
+        assert_eq!(echoed, b"fd-ok");
+        let mut err: *const c_char = ptr::null();
+        coil_tls_disable(session, fd, &mut err);
         coil_tls_free(session);
         assert_eq!(coil_tls_session_for_fd(fd), 0);
         drop(s);
@@ -1147,17 +1057,8 @@ mod tests {
     }
 
     #[test]
-    fn attach_hooks_reject_null_session() {
-        let mut err: *const c_char = ptr::null();
-        let n = unsafe { coil_tls_stream_read(ptr::null_mut(), ptr::null_mut(), 0, &mut err) };
-        assert_eq!(n, -1);
-        assert_eq!(tag_of(err), "InvalidInput");
-        let n = unsafe { coil_tls_stream_write(ptr::null_mut(), ptr::null(), 0, &mut err) };
-        assert_eq!(n, -1);
-        assert_eq!(tag_of(err), "InvalidInput");
-        let rc = unsafe { coil_tls_stream_shutdown(ptr::null_mut(), &mut err) };
-        assert_eq!(rc, -1);
-        assert_eq!(tag_of(err), "InvalidInput");
+    fn wants_write_of_null_session_is_invalid() {
+        assert_eq!(coil_tls_wants_write(0), -1);
         assert_eq!(coil_tls_session_for_fd(-1), 0);
     }
 
