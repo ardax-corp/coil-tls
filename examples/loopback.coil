@@ -1,11 +1,9 @@
-// Client+server enable across Coil threads (COI-116). Uses Stream.attach,
-// not leftover HostInvoke. Parks WouldBlock on the VM. Run with `coil`
-// (coil test does not wire thread spawn).
+// Client+server enable across Coil threads (COI-116): each side gets a
+// `TlsStream` and reads the negotiated ALPN protocol from it.
 use io::{stdout, write, wait_readable, IoError};
 use io::net::tcp::{listen, connect, accept, local_addr};
 use tls::client::{enable as client_enable, ClientOpts};
 use tls::server::{enable as server_enable, ServerOpts};
-use tls::{alpn_protocol};
 use tls::error::{TlsError};
 use thread::{spawn, join, channel, send, recv, Sender};
 use string::{format, to_bytes};
@@ -29,7 +27,7 @@ fn serve(Sender tx) -> Result<string, TlsError> {
     wait_readable(listener).map_err(fn (IoError e) => TlsError::Io(e))?;
     let sock = accept(listener).map_err(fn (IoError e) => TlsError::Io(e))?;
     let s = server_enable(sock, new ServerOpts(cert_pem(), key_pem(), 5000, "", "h2"))?;
-    return alpn_protocol(s)?;
+    return s.alpn()?;
 }
 
 fn run() -> string {
@@ -55,7 +53,7 @@ fn run() -> string {
         Result::Ok(s) => s,
         Result::Err(e) => { return format("client-%v", e); },
     };
-    let client_proto = match alpn_protocol(s) {
+    let client_proto = match s.alpn() {
         Result::Ok(p) => p,
         Result::Err(_) => { return "client-alpn"; },
     };

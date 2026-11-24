@@ -1,13 +1,15 @@
 // Lower-level C ABI around `coil_tls_*`. Session.ptr is the native session
-// pointer. After Stream.attach, the Stream owns free; Session.drop of a
-// released ptr is a no-op. Prefer `tls::client::enable` for HTTP.
+// pointer; Session.drop of a released ptr is a no-op. `tls::stream::TlsStream`
+// reads and writes through `read_at` / `write_at` here. Prefer
+// `tls::client::enable` for HTTP.
 //
 // Every native is in the `extern "tls"` block: in native code each is a
 // direct C call, and an AOT `coil package` links libtls by name. Spawned
 // threads call through the library the program loaded.
 
-use io::{Stream, IoError, write, read};
-use tls::error::{TlsError, tls_error_from_name};
+use io::{Stream, IoError};
+use ffi::types::{Bytes, ConstBytes};
+use tls::error::{TlsError, tls_error_from_name, io_error_from_name};
 
 extern "tls" {
     fn coil_tls_last_error() -> string;
@@ -16,11 +18,9 @@ extern "tls" {
     fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
     fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
     fn coil_tls_disable(int session, int fd, int err_out);
-    fn coil_tls_session_for_fd(int fd) -> int;
-    fn coil_tls_stream_read_fn() -> int;
-    fn coil_tls_stream_write_fn() -> int;
-    fn coil_tls_stream_shutdown_fn() -> int;
-    fn coil_tls_stream_free_fn() -> int;
+    fn coil_tls_read(int session, int fd, Bytes buf, int len, int err_out) -> int;
+    fn coil_tls_write(int session, int fd, ConstBytes buf, int len, int err_out) -> int;
+    fn coil_tls_wants_write(int session) -> int;
 }
 
 class Session {
@@ -83,16 +83,18 @@ fn enable_server_fd(int fd, string cert_pem, string key_pem, int timeout_ms, str
     return wrap_session(ptr)?;
 }
 
-fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<int, TlsError> {
+// The socket's fd and a new client session on it.
+fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<(int, int), TlsError> {
     let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
     let ptr = coil_tls_client_enable(fd, host, verify_int(verify), option_string(ca_pem), option_string(ca_path), timeout_ms, alpn, 0);
-    return session_ptr_or_raise(ptr)?;
+    return (fd, session_ptr_or_raise(ptr)?);
 }
 
-fn create_server(Stream s, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<int, TlsError> {
+// The socket's fd and a new server session on it.
+fn create_server(Stream s, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<(int, int), TlsError> {
     let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
     let ptr = coil_tls_server_enable(fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0);
-    return session_ptr_or_raise(ptr)?;
+    return (fd, session_ptr_or_raise(ptr)?);
 }
 
 fn disable(Session s, int fd) -> Result<(), TlsError> {
@@ -114,76 +116,58 @@ fn alpn_protocol(Session s) -> Result<string, TlsError> {
     return alpn_at(s.ptr)?;
 }
 
-fn session_for_stream(Stream s) -> int {
-    return match s.fd() {
-        Result::Ok(fd) => coil_tls_session_for_fd(fd),
-        Result::Err(_) => 0,
-    };
-}
-
-fn disable_stream(Stream s) -> Result<Stream, TlsError> {
-    let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
-    let ptr = coil_tls_session_for_fd(fd);
-    if ptr == 0 {
-        raise TlsError::Io(IoError::InvalidInput);
+// The `IoError` of a failed read or write, from the native side's last
+// error: `IoError::Protocol` for a certificate or handshake failure.
+fn last_io_error() -> IoError {
+    let name = coil_tls_last_error();
+    if name == "" {
+        return IoError::Other;
     }
-    coil_tls_disable(ptr, fd, 0);
-    return s;
+    return io_error_from_name(name);
 }
 
-// A stream call's failure: `IoError::Protocol` is the native side's own
-// certificate or handshake failure, which it names in its last error.
+// A TLS stream call's failure as a `TlsError`: `IoError::Protocol` is the
+// native side's certificate or handshake failure, which it names.
 fn stream_failure(IoError e) -> TlsError {
     if e != IoError::Protocol {
         return TlsError::Io(e);
     }
-    let name = coil_tls_last_error();
-    if name == "Certificate" {
+    if coil_tls_last_error() == "Certificate" {
         return TlsError::Certificate;
     }
     return TlsError::Handshake;
 }
 
-fn handshake_until_ready(Stream s) -> Result<Stream, TlsError> {
-    while true {
-        let wbuf: Vec<byte> = Vec::new();
-        // Successful empty write is Ready. Empty userland read does not
-        // pump (VM returns Ok at capacity 0) so it is not a Ready signal.
-        match write(s, wbuf) {
-            Result::Ok(_) => {
-                return s;
-            },
-            Result::Err(e) => {
-                if e != IoError::WouldBlock {
-                    raise stream_failure(e);
-                }
-            },
-        };
-        let rbuf: Vec<byte> = Vec::new();
-        match read(s, rbuf) {
-            Result::Ok(_) => 0,
-            Result::Err(e) => {
-                if e != IoError::WouldBlock {
-                    raise stream_failure(e);
-                }
-            },
-        };
-        s.park().map_err(fn (IoError e) => stream_failure(e))?;
+// Decrypted bytes into the front of `buf`: `Some(n)`, or `None` at the
+// peer's close_notify or end of input.
+fn read_at(int session, int fd, Vec<byte> buf) -> Result<Option<int>, IoError> {
+    let n = coil_tls_read(session, fd, buf, buf.len(), 0);
+    if n < 0 {
+        raise last_io_error();
     }
+    if n == 0 && buf.len() != 0 {
+        return None;
+    }
+    return Some(n);
 }
 
-fn attach_and_handshake(Stream s, int ptr) -> Result<Stream, TlsError> {
-    let read_fn = coil_tls_stream_read_fn();
-    let write_fn = coil_tls_stream_write_fn();
-    let shutdown_fn = coil_tls_stream_shutdown_fn();
-    let free_fn = coil_tls_stream_free_fn();
-    match s.attach(ptr, read_fn, write_fn, shutdown_fn, free_fn) {
-        Result::Ok(attached) => {
-            return handshake_until_ready(attached)?;
-        },
-        Result::Err(e) => {
-            coil_tls_free(ptr);
-            raise TlsError::Io(e);
-        },
-    };
+// How many bytes of `buf` the session took to send.
+fn write_at(int session, int fd, Vec<byte> buf) -> Result<int, IoError> {
+    let n = coil_tls_write(session, fd, buf, buf.len(), 0);
+    if n < 0 {
+        raise last_io_error();
+    }
+    return n;
+}
+
+// Whether a WouldBlock retry waits for the socket to take writes (TLS
+// records to send) rather than for data.
+fn wants_write(int session) -> bool {
+    return coil_tls_wants_write(session) == 1;
+}
+
+// close_notify to the peer and the session freed.
+fn finish(int session, int fd) {
+    coil_tls_disable(session, fd, 0);
+    coil_tls_free(session);
 }

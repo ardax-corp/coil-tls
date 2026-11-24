@@ -1,10 +1,11 @@
 // Server side of TLS: `enable` runs the server handshake on an accepted TCP
-// `Stream` in place, with the certificate and key in `ServerOpts`; `disable`
-// sends close_notify. Same extern call + Stream.attach + park as the client.
+// `Stream`, with the certificate and key in `ServerOpts`, and returns a
+// `tls::stream::TlsStream` over it.
 
 use io::{Stream};
 use tls::error::{TlsError};
-use tls::abi::{create_server, attach_and_handshake, disable_stream};
+use tls::abi::{create_server};
+use tls::stream::{TlsStream, handshake};
 
 /// How `enable` sets up a server session: the certificate and key to
 /// present, the handshake deadline, client certificates and ALPN.
@@ -38,13 +39,12 @@ class ServerOpts {
 }
 
 /// Runs a TLS server handshake on the accepted TCP stream `s` and returns
-/// the same `Stream`, now encrypted.
+/// a `TlsStream` over it.
 ///
-/// As with the client, the stream's `read`, `write` and close go through TLS
-/// afterwards, and the handshake parks the task on `WouldBlock` instead of
-/// blocking the thread. Read the negotiated protocol with
-/// `tls::alpn_protocol`. The program needs `--allow-attach`, `--allow-dload
-/// tls` and libtls on the FFI search path.
+/// As with the client, the `TlsStream` implements `io::Read`, `io::Write`
+/// and `io::Close`, and the handshake waits for the socket on `WouldBlock`
+/// instead of blocking the thread. Read the negotiated protocol with
+/// `alpn()`. The program needs libtls on the FFI search path.
 ///
 /// # Errors
 ///
@@ -61,7 +61,7 @@ class ServerOpts {
 /// Greeting one client on a listening socket:
 ///
 /// ```no_run
-/// use io::{IoError, Stream, close};
+/// use io::{IoError, Stream};
 /// use io::sync::{accept_wait, write_all};
 /// use string::{to_bytes};
 /// use tls::server::{enable, ServerOpts};
@@ -77,22 +77,12 @@ class ServerOpts {
 ///     let tcp = accept_wait(listener).map_err(io_err)?;
 ///     let s = enable(tcp, new ServerOpts(cert, key, 10000, "", ""))?;
 ///     write_all(s, to_bytes("hello over TLS\n")).map_err(io_err)?;
-///     close(s).map_err(io_err)?;
+///     s.close().map_err(io_err)?;
 ///     return;
 /// }
 /// # fn main() {}
 /// ```
-fn enable(Stream s, ServerOpts opts) -> Result<Stream, TlsError> {
-    let ptr = create_server(s, opts.cert_pem, opts.key_pem, opts.timeout_ms, opts.client_ca_pem, opts.alpn)?;
-    return attach_and_handshake(s, ptr)?;
-}
-
-/// Sends TLS `close_notify` to the client and returns `s`, as
-/// `tls::client::disable` does.
-///
-/// # Errors
-///
-/// `TlsError::Io(IoError::InvalidInput)` when `s` has no TLS session.
-fn disable(Stream s) -> Result<Stream, TlsError> {
-    return disable_stream(s)?;
+fn enable(Stream s, ServerOpts opts) -> Result<TlsStream, TlsError> {
+    let (fd, session) = create_server(s, opts.cert_pem, opts.key_pem, opts.timeout_ms, opts.client_ca_pem, opts.alpn)?;
+    return handshake(s, fd, session)?;
 }

@@ -1,0 +1,176 @@
+// `TlsStream`: a TLS session over a TCP `Stream`, made by
+// `tls::client::enable` / `tls::server::enable`. It implements `io::Read`,
+// `io::Write` and `io::Close`, so `io::sync`, `io::buffered` and anything
+// else bounded by those traits takes it as it takes a `Stream`.
+use io::{Stream, IoError, Read, Write, Close};
+use tls::error::TlsError;
+use tls::abi::read_at;
+use tls::abi::write_at;
+use tls::abi::wants_write;
+use tls::abi::finish;
+use tls::abi::alpn_at;
+use tls::abi::stream_failure;
+
+/// A TLS session over a connected TCP stream.
+///
+/// `read` and `write` move plaintext; the records go over the socket.
+/// Neither waits: each returns `Err(IoError::WouldBlock)` when the socket
+/// is not ready, and `wait_readable` / `wait_writable` then wait for
+/// whichever way the session needs the socket (a read can need to send a
+/// record first). `close` sends close_notify, frees the session and closes
+/// the socket; dropping the stream frees the session without either.
+///
+/// # Examples
+///
+/// ```no_run
+/// use io::{IoError, Stream};
+/// use io::sync::{write_all, read_to_end};
+/// use string::{to_bytes};
+/// use tls::client::{enable, ClientOpts};
+/// use tls::error::{TlsError};
+///
+/// fn io_err(IoError e) -> TlsError {
+///     return TlsError::Io(e);
+/// }
+///
+/// // `tcp` is a connected socket, from `io::net::tcp::connect(host, 443)`.
+/// fn fetch(Stream tcp, string host) -> Result<Vec<byte>, TlsError> {
+///     let s = enable(tcp, host, new ClientOpts(true, None, None, 10000, "http/1.1"))?;
+///     let request = "GET / HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
+///     write_all(s, to_bytes(request)).map_err(io_err)?;
+///     let body = read_to_end(s).map_err(io_err)?;
+///     s.close().map_err(io_err)?;
+///     return body;
+/// }
+/// # fn main() {}
+/// ```
+shared class TlsStream {
+    pub __tcp: Stream,
+    pub __fd: int,
+    pub __session: int,
+}
+
+impl TlsStream {
+    /// The ALPN protocol the peers agreed on (for example `"h2"`), or `""`
+    /// when they agreed on none.
+    ///
+    /// # Errors
+    ///
+    /// `TlsError::Io(IoError::AlreadyClosed)` once the stream was closed or
+    /// TLS disabled on it.
+    pub fn alpn() -> Result<string, TlsError> {
+        if self.__session == 0 {
+            raise TlsError::Io(IoError::AlreadyClosed);
+        }
+        return alpn_at(self.__session)?;
+    }
+
+    /// Sends close_notify, frees the session and returns the TCP stream,
+    /// still open, for plaintext use or to close.
+    ///
+    /// # Errors
+    ///
+    /// `TlsError::Io(IoError::AlreadyClosed)` once the stream was closed or
+    /// TLS disabled on it.
+    pub fn disable() -> Result<Stream, TlsError> {
+        if self.__session == 0 {
+            raise TlsError::Io(IoError::AlreadyClosed);
+        }
+        let session = self.__session;
+        self.__session = 0;
+        finish(session, self.__fd);
+        return self.__tcp;
+    }
+
+    /// The TCP stream under the session. Reading or writing it directly
+    /// breaks the session.
+    pub fn tcp() -> Stream {
+        return self.__tcp;
+    }
+
+    fn drop() {
+        let session = self.__session;
+        if session != 0 {
+            self.__session = 0;
+            finish(session, self.__fd);
+        }
+    }
+}
+
+// Waits until the socket can make progress the way the session needs:
+// writable when it holds records to send, readable otherwise.
+fn ready(TlsStream s) -> Result<unit, IoError> {
+    if s.__session == 0 {
+        raise IoError::AlreadyClosed;
+    }
+    if wants_write(s.__session) {
+        return s.__tcp.wait_writable();
+    }
+    return s.__tcp.wait_readable();
+}
+
+impl Read for TlsStream {
+    fn read(TlsStream s, Vec<byte> buf) -> Result<Option<int>, IoError> {
+        if s.__session == 0 {
+            raise IoError::AlreadyClosed;
+        }
+        return read_at(s.__session, s.__fd, buf);
+    }
+
+    fn wait_readable(TlsStream s) -> Result<unit, IoError> {
+        return ready(s);
+    }
+}
+
+impl Write for TlsStream {
+    fn write(TlsStream s, Vec<byte> buf) -> Result<int, IoError> {
+        if s.__session == 0 {
+            raise IoError::AlreadyClosed;
+        }
+        return write_at(s.__session, s.__fd, buf);
+    }
+
+    fn wait_writable(TlsStream s) -> Result<unit, IoError> {
+        return ready(s);
+    }
+}
+
+impl Close for TlsStream {
+    /// Sends close_notify, frees the session and closes the socket.
+    fn close(TlsStream s) -> Result<unit, IoError> {
+        if s.__session == 0 {
+            raise IoError::AlreadyClosed;
+        }
+        let session = s.__session;
+        s.__session = 0;
+        finish(session, s.__fd);
+        return s.__tcp.close();
+    }
+}
+
+// The stream over `tcp` once the handshake of `session` is done. An empty
+// write succeeds once the session is ready; an empty read takes in what the
+// peer sent. A failed handshake frees the session with the stream.
+fn handshake(Stream tcp, int fd, int session) -> Result<TlsStream, TlsError> {
+    let s = new TlsStream(tcp, fd, session);
+    let empty: Vec<byte> = [];
+    while true {
+        match write_at(session, fd, empty) {
+            Ok(_) => {
+                return s;
+            },
+            Err(IoError::WouldBlock) => {},
+            Err(e) => {
+                raise stream_failure(e);
+            },
+        }
+        match read_at(session, fd, empty) {
+            Ok(_) => {},
+            Err(IoError::WouldBlock) => {},
+            Err(e) => {
+                raise stream_failure(e);
+            },
+        }
+        ready(s).map_err(stream_failure)?;
+    }
+}
