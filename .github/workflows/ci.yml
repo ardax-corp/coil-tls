@@ -5,7 +5,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [main, feature/native]
 
 # A new push to a pull request cancels that PR's older runs. Runs on the
 # default branch are never cancelled once started.
@@ -55,13 +55,32 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # coil comes from the coil-lang `edge` release (a snapshot of its main,
-      # rebuilt after every green coil-lang CI run) instead of a source build.
-      - name: Install coil (edge)
-        id: coil
-        uses: ardax-corp/coil-lang/.github/actions/setup-coil@main
+      # This branch tracks coil-lang `feature/native`, which the `edge`
+      # release (a snapshot of main) does not have yet: build coil from it.
+      - uses: actions/checkout@v4
         with:
-          stdlib: true
+          repository: ardax-corp/coil-lang
+          ref: feature/native
+          path: .coil-lang
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ardax-corp/coil-stdlib
+          ref: feature/native
+          path: .coil-stdlib
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .coil-lang
+
+      - name: Build coil (feature/native)
+        id: coil
+        run: |
+          cargo build --release --manifest-path .coil-lang/Cargo.toml --bin coil --bin coil-test
+          # `coil package` links the native runtime from beside the coil binary.
+          cargo build --release --manifest-path .coil-lang/Cargo.toml -p coil-rt
+          echo "$PWD/.coil-lang/target/release" >> "$GITHUB_PATH"
+          echo "stdlib=$PWD/.coil-stdlib/src" >> "$GITHUB_OUTPUT"
 
       - name: Build libtls.so
         working-directory: coil-tls/native
@@ -79,12 +98,12 @@ jobs:
 
       - name: Run coil tests
         working-directory: coil-tls
-        run: coil test --allow-attach --allow-write --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native --root "${{ steps.coil.outputs.stdlib }}"
+        run: coil test --allow-write --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native --root "${{ steps.coil.outputs.stdlib }}"
 
       - name: Loopback attach handshake
         working-directory: coil-tls
         run: |
-          out=$(coil --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.coil)
+          out=$(coil --allow-net --allow-dload tls --dload-pin "$TLS_PIN" --ffi-search-path native examples/loopback.coil)
           echo "$out"
           test "$out" = "ok"
 
@@ -105,7 +124,7 @@ jobs:
           set -euo pipefail
           app="$RUNNER_TEMP/pkg"
           mkdir -p "$app/lib"
-          coil package --allow-attach --allow-net --allow-dload tls --dload-pin "$TLS_PIN" \
+          coil package --allow-net --allow-dload tls --dload-pin "$TLS_PIN" \
             --root src --root "${{ steps.coil.outputs.stdlib }}" \
             --ffi-native "name=tls,version=0.1.0,path=native" -o "$app/loopback" examples/loopback.coil
           cp native/libtls.so "$app/lib/"

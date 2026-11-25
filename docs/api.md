@@ -1,14 +1,26 @@
 # API
 
-Module: `use tls::{client, server, alpn_protocol};` (package name `tls` from `coil.toml`). How to depend: [consume.md](consume.md).
+Module: `use tls::{client, server, TlsStream};` (package name `tls` from `coil.toml`). How to depend: [consume.md](consume.md).
 
-## In-place upgrade
+## TlsStream
 
-`client::enable` / `server::enable` take a TCP `Stream` and return that same `Stream` with TLS attached via generic `Stream.attach`. coil-http keeps `enable(stream, host, opts) -> Result<Stream, TlsError>`. Do not wrap a second Stream type. Do not use `enable(fd) -> Session` as the HTTP-facing API.
+`client::enable` / `server::enable` take a connected TCP `Stream`, run the handshake and return a `TlsStream` over it. Leave the TCP stream to the `TlsStream` from then on: reading or writing it directly breaks the session.
 
-Enable is dload create (`coil_tls_*_enable`, Stream marshals to fd) + `s.attach(session, read, write, shutdown, free)` + empty `write`/`read` until Ready. `WouldBlock` parks with `s.park()` (`reactor_wait_fd_no_help`). Do not retry `enable` for the same handshake. After attach, `s.read()` / `s.write()` / Drop go through the C vtable. This package does not import leftover `io::__tls`.
+`TlsStream` implements `io::Read`, `io::Write` and `io::Close`, so generic code bounded by them, and the stdlib's `io::sync` helpers and `io::buffered` `Reader` / `Writer`, take it:
 
-C ABI `Session` helpers are `tls::abi`, which is package-internal (not part of the documented API). They talk `coil_tls_*` and do **not** attach. After attach, the Stream owns free; `Session.drop` of a released pointer is a no-op. `Session.drop` before attach still calls `coil_tls_free`.
+| Call | Does |
+|------|------|
+| `s.read(buf)` | decrypted bytes into the front of `buf`: `Ok(Some(n))`, `Ok(None)` at the peer's close_notify, `Err(IoError::WouldBlock)` when nothing is ready |
+| `s.write(buf)` | how many bytes of `buf` the session took, or `Err(IoError::WouldBlock)` |
+| `s.wait_readable()` / `s.wait_writable()` | wait until a retry can make progress: for the socket to take writes when the session holds records to send, else for data |
+| `s.close()` | close_notify, frees the session, closes the socket |
+| `s.alpn()` | the negotiated ALPN protocol, or `""` |
+| `s.disable()` | close_notify, frees the session, returns the TCP `Stream` (still open) |
+| `s.tcp()` | the TCP `Stream` under the session |
+
+After `close` or `disable`, every call is `IoError::AlreadyClosed` (`TlsError::Io(IoError::AlreadyClosed)` for `alpn` and `disable`). Dropping a `TlsStream` frees the session without close_notify. A TLS failure in `read` / `write` is `IoError::Protocol`.
+
+The handshake does not block the thread: on `WouldBlock` it waits as `wait_readable` does. Do not handshake on a blocking thread.
 
 ## Types
 
@@ -36,11 +48,8 @@ Call sites pass `new ClientOpts(...)` / `new ServerOpts(...)`. Handles are not t
 
 | Function | Description |
 |----------|-------------|
-| `client::enable(stream, host, opts)` | Client handshake. Returns the same `Stream`. |
-| `client::disable(stream)` | `close_notify` only; Stream Drop still owns free |
-| `server::enable(stream, opts)` | Server handshake |
-| `server::disable(stream)` | Same teardown as client disable |
-| `alpn_protocol(stream)` | Negotiated ALPN, or `""` |
+| `client::enable(stream, host, opts)` | Client handshake. Returns a `TlsStream`. |
+| `server::enable(stream, opts)` | Server handshake. Returns a `TlsStream`. |
 
 All return `Result<_, TlsError>`. `timeout_ms <= 0` means no handshake deadline. Extra `ca_pem` / `ca_path` **append** to webpki roots when `verify` is true. Empty `client_ca_pem` means no mTLS. `alpn` is `""`, `"h2"`, `"http/1.1"`, or a comma list.
 
@@ -56,8 +65,8 @@ A non-TCP Stream (for example a file from `open`) is `TlsError::Io(IoError::Inva
 | `Handshake` | the TLS handshake or record layer failed |
 | `Io(IoError)` | the socket failed, or the input was invalid (a non-TCP Stream, a bad PEM) |
 
-`IoError` itself has no TLS variants: a TLS stream's own `read` / `write` report `IoError::Protocol` on a TLS failure. Successful empty write means handshake is done; empty read/write still pump handshake.
+`IoError` itself has no TLS variants: a `TlsStream`'s `read` / `write` report `IoError::Protocol` on a TLS failure.
 
 ## C ABI (`tls::abi`)
 
-Symbols live in `native/tls.h` and are reached with `dload` / `invoke` (not `extern "tls"`: worker VMs skip `ffi_init`). Leftover-shaped: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_alpn`, `coil_tls_disable`, `coil_tls_free`. Attach-shaped wrappers (`coil_tls_stream_read` / `write` / `shutdown` / `free`) take the session pointer only; fd is stored in the session. `*_fn()` return those addresses for `Stream.attach`. rustls is not called from `.coil`. Userland passes `err_out` as `0` and reads `coil_tls_last_error` / `coil_tls_alpn_cstr`. `coil_tls_disable` is close_notify only (session stays valid). `coil_tls_free` is Drop. `tls::abi::disable` does not free or zero `Session.ptr`.
+Symbols live in `native/tls.h` and are called through the `extern "tls"` block: `coil_tls_client_enable`, `coil_tls_server_enable`, `coil_tls_read`, `coil_tls_write`, `coil_tls_wants_write`, `coil_tls_alpn_cstr`, `coil_tls_disable`, `coil_tls_free`. Buffers go as `Bytes` / `ConstBytes`; userland passes `err_out` as `0` and reads `coil_tls_last_error`. `coil_tls_disable` is close_notify only (the session stays valid); `coil_tls_free` frees it. The `Session` class there is for the package's own tests: `Session.drop` frees a pointer it still holds.

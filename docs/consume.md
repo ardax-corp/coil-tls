@@ -1,6 +1,6 @@
 # Consuming coil-tls
 
-This package is `tls`. `use tls::{client, server}` and `use tls::{alpn_protocol}` resolve from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call `dload("tls")` inside the package. Put the built library on the FFI search path (`--ffi-search-path`). Needs coil-lang with `Stream.attach` / `Stream.park` ([coil-lang #204](https://github.com/ardax-corp/coil-lang/pull/204)).
+This package is `tls`. `use tls::{client, server, TlsStream}` resolves from this repo's `src/`. rustls lives in `libtls.so` / `.dylib` / `tls.dll`. `client::enable` / `server::enable` call libtls through the package's `extern "tls"` block. Put the built library on the FFI search path (`--ffi-search-path`).
 
 API: [api.md](api.md). Handshake demo: [examples/loopback.coil](../examples/loopback.coil).
 
@@ -16,28 +16,29 @@ make -C native artifact
 
 ```bash
 coil --root ../coil-tls/src --ffi-search-path ../coil-tls/native \
-  --allow-dload tls --dload-trusted tls --allow-attach --allow-net main.coil
+  --allow-dload tls --dload-trusted tls --allow-net main.coil
 ```
 
-`--dload-pin tls=<sha256 of libtls.so>` instead of `--dload-trusted tls` pins the build. `enable` needs `--allow-attach` (`Stream.attach`). Opening the TCP stream needs `--allow-net`.
+`--dload-pin tls=<sha256 of libtls.so>` instead of `--dload-trusted tls` pins the build. Opening the TCP stream needs `--allow-net`.
 
 `coil package` pins the library it embeds a lock for, so it also needs one `--ffi-native` row for the `tls` stem:
 
 ```bash
-coil package --root ../coil-tls/src --allow-dload tls --dload-trusted tls --allow-attach --allow-net \
+coil package --root ../coil-tls/src --allow-dload tls --dload-trusted tls --allow-net \
   --ffi-native name=tls,version=0.1.0,path=../coil-tls/native -o app main.coil
 ```
 
-The packaged app looks for `libtls.so` in the natives cache, beside `app` or in its `lib/`. The package loads the library only as `dload("tls")`, never by path, so that one row is all `coil package` needs ([#17](https://github.com/ardax-corp/coil-tls/issues/17)).
+The packaged app looks for `libtls.so` in the natives cache, beside `app` or in its `lib/`. The package names the library only by its stem `tls`, never by path, so that one row is all `coil package` needs. On Linux the executable links `libtls.so` by name and checks its hash when it is built ([#17](https://github.com/ardax-corp/coil-tls/issues/17)).
 
 Then:
 
 ```coil
-use tls::client::{enable, disable, ClientOpts};
-use tls::server::{enable as server_enable, disable as server_disable, ServerOpts};
-use tls::{alpn_protocol};
+use tls::TlsStream;
+use tls::client::{enable, ClientOpts};
+use tls::server::{enable as server_enable, ServerOpts};
 
-let s = enable(tcp, "example.com", new ClientOpts(true, Option::None, Option::None, 0, ""))?;
+let s: TlsStream = enable(tcp, "example.com", new ClientOpts(true, Option::None, Option::None, 0, ""))?;
+let proto = s.alpn()?;
 ```
 
 ## With spool
@@ -62,7 +63,6 @@ roots = ["./src"]
 
 [permissions]
 net = true
-attach = true
 
 [ffi]
 allow = ["tls"]
@@ -79,11 +79,10 @@ A build elsewhere still works: put its directory in the consumer's own `[ffi] se
 
 | Before (coil-lang builtin) | After (coil-tls) |
 |----------------------------|------------------|
-| `use io::net::tls::client::{enable, disable}` | `use tls::client::{enable, disable}` |
-| `use io::net::tls::server::{enable, disable}` | `use tls::server::{enable, disable}` |
-| `use io::net::tls::{alpn_protocol}` | `use tls::{alpn_protocol}` |
-| Host rustls on `ObjStream` | `Stream.attach` with `coil_tls_*` session pointer on the same `Stream` |
+| `use io::net::tls::client::{enable}` | `use tls::client::{enable}`, which returns a `TlsStream` |
+| `use io::net::tls::server::{enable}` | `use tls::server::{enable}`, which returns a `TlsStream` |
+| `disable(s)` | `s.disable()`, which returns the TCP `Stream` |
+| `use io::net::tls::{alpn_protocol}`, `alpn_protocol(s)` | `s.alpn()` |
+| Host rustls on `ObjStream` | `TlsStream`, an `io::Read` + `io::Write` + `io::Close` over the TCP `Stream` |
 
-coil-http keeps `use tls::{client, server}::enable`. Pass `ClientOpts` / `ServerOpts` (not leftover anonymous records).
-
-Enable is dload create + `s.attach` + `s.park` on WouldBlock. Do not import leftover `io::__tls` from application code or from this package.
+Pass `ClientOpts` / `ServerOpts` (not leftover anonymous records). Code that took a `Stream` for both plain and TLS connections takes an `io::Read` / `io::Write` value, or a bound, instead.

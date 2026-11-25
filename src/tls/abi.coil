@@ -1,16 +1,27 @@
 // Lower-level C ABI around `coil_tls_*`. Session.ptr is the native session
-// pointer. After Stream.attach, the Stream owns free; Session.drop of a
-// released ptr is a no-op. Prefer `tls::client::enable` for HTTP.
+// pointer; Session.drop of a released ptr is a no-op. `tls::stream::TlsStream`
+// reads and writes through `read_at` / `write_at` here. Prefer
+// `tls::client::enable` for HTTP.
 //
-// No `extern "tls"` / `extern "c"`: worker VMs do not run ffi_init, so those
-// handles are invalid. dload + invoke. Spawned workers inherit the FFI search
-// paths, so `dload("tls")` is the only lookup: a path literal would be a second
-// constant stem that `coil package` cannot pin (coil-tls#17).
+// Every native is in the `extern "tls"` block: in native code each is a
+// direct C call, and an AOT `coil package` links libtls by name. Spawned
+// threads call through the library the program loaded.
 
-use io::{Stream, IoError, write, read};
-use tls::error::{TlsError, tls_error_from_name};
-use ffi::{declare, dload, invoke, Error};
-use ffi::types::{Int, String, Void};
+use io::{Stream, IoError};
+use ffi::types::{Bytes, ConstBytes};
+use tls::error::{TlsError, tls_error_from_name, io_error_from_name};
+
+extern "tls" {
+    fn coil_tls_last_error() -> string;
+    fn coil_tls_alpn_cstr(int session) -> string;
+    fn coil_tls_free(int session);
+    fn coil_tls_client_enable(int fd, string host, int verify, string ca_pem, string ca_path, int timeout_ms, string alpn, int err_out) -> int;
+    fn coil_tls_server_enable(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn, int err_out) -> int;
+    fn coil_tls_disable(int session, int fd, int err_out);
+    fn coil_tls_read(int session, int fd, Bytes buf, int len, int err_out) -> int;
+    fn coil_tls_write(int session, int fd, ConstBytes buf, int len, int err_out) -> int;
+    fn coil_tls_wants_write(int session) -> int;
+}
 
 class Session {
     pub ptr: int,
@@ -30,67 +41,12 @@ fn verify_int(bool v) -> int {
     return 0;
 }
 
-fn tls_lib() -> Result<int, TlsError> {
-    return match dload("tls") {
-        Result::Ok(h) => h,
-        Result::Err(_) => {
-            raise TlsError::Io(IoError::NotFound);
-        },
-    };
-}
-
-fn native_last_error() -> Result<string, Error> {
-    let lib = dload("tls")?;
-    let last_fn = declare(lib, "coil_tls_last_error", (), String)?;
-    return invoke(lib, last_fn, ())?;
-}
-
-fn alpn_string(int lib, int ptr) -> Result<string, Error> {
-    let alpn_fn = declare(lib, "coil_tls_alpn_cstr", (Int,), String)?;
-    return invoke(lib, alpn_fn, (ptr,))?;
-}
-
-fn hook_addr(int lib, string name) -> Result<int, TlsError> {
-    let id = match declare(lib, name, (), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    return match invoke(lib, id, ()) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-}
-
-fn native_free(int lib, int ptr) {
-    let id = match declare(lib, "coil_tls_free", (Int,), Void) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { return; },
-    };
-    match invoke(lib, id, (ptr,)) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => 0,
-    };
-}
-
 impl Session {
     fn drop() {
         if self.ptr != 0 {
             let p = self.ptr;
             self.ptr = 0;
-            match dload("tls") {
-                Result::Ok(lib) => {
-                    match declare(lib, "coil_tls_free", (Int,), Void) {
-                        Result::Ok(id) => {
-                            match invoke(lib, id, (p,)) {
-                                Result::Ok(_) => {},
-                                Result::Err(_) => {},
-                            };
-                        },
-                        Result::Err(_) => {},
-                    };
-                },
-                Result::Err(_) => {},
-            };
+            coil_tls_free(p);
         }
     }
 
@@ -103,10 +59,7 @@ impl Session {
 
 fn session_ptr_or_raise(int ptr) -> Result<int, TlsError> {
     if ptr == 0 {
-        let name = match native_last_error() {
-            Result::Ok(s) => s,
-            Result::Err(_) => "",
-        };
+        let name = coil_tls_last_error();
         if name == "" {
             raise TlsError::Io(IoError::Other);
         }
@@ -121,80 +74,34 @@ fn wrap_session(int ptr) -> Result<Session, TlsError> {
 }
 
 fn enable_client_fd(int fd, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<Session, TlsError> {
-    let lib = tls_lib()?;
-    let id = match declare(lib, "coil_tls_client_enable", (Int, String, Int, String, String, Int, String, Int), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    // Hoisted: a call inside the argument tuple makes invoke fail (coil-lang#722).
-    let verify_flag = verify_int(verify);
-    let ca_pem_arg = option_string(ca_pem);
-    let ca_path_arg = option_string(ca_path);
-    let ptr = match invoke(lib, id, (fd, host, verify_flag, ca_pem_arg, ca_path_arg, timeout_ms, alpn, 0)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+    let ptr = coil_tls_client_enable(fd, host, verify_int(verify), option_string(ca_pem), option_string(ca_path), timeout_ms, alpn, 0);
     return wrap_session(ptr)?;
 }
 
 fn enable_server_fd(int fd, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<Session, TlsError> {
-    let lib = tls_lib()?;
-    let id = match declare(lib, "coil_tls_server_enable", (Int, String, String, Int, String, String, Int), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    let ptr = match invoke(lib, id, (fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+    let ptr = coil_tls_server_enable(fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0);
     return wrap_session(ptr)?;
 }
 
-fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<int, TlsError> {
-    let lib = tls_lib()?;
-    let id = match declare(lib, "coil_tls_client_enable", (Int, String, Int, String, String, Int, String, Int), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+// The socket's fd and a new client session on it.
+fn create_client(Stream s, string host, bool verify, Option<string> ca_pem, Option<string> ca_path, int timeout_ms, string alpn) -> Result<(int, int), TlsError> {
     let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
-    // Hoisted: a call inside the argument tuple makes invoke fail (coil-lang#722).
-    let verify_flag = verify_int(verify);
-    let ca_pem_arg = option_string(ca_pem);
-    let ca_path_arg = option_string(ca_path);
-    let ptr = match invoke(lib, id, (fd, host, verify_flag, ca_pem_arg, ca_path_arg, timeout_ms, alpn, 0)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    return session_ptr_or_raise(ptr)?;
+    let ptr = coil_tls_client_enable(fd, host, verify_int(verify), option_string(ca_pem), option_string(ca_path), timeout_ms, alpn, 0);
+    return (fd, session_ptr_or_raise(ptr)?);
 }
 
-fn create_server(Stream s, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<int, TlsError> {
-    let lib = tls_lib()?;
-    let id = match declare(lib, "coil_tls_server_enable", (Int, String, String, Int, String, String, Int), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+// The socket's fd and a new server session on it.
+fn create_server(Stream s, string cert_pem, string key_pem, int timeout_ms, string client_ca_pem, string alpn) -> Result<(int, int), TlsError> {
     let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
-    let ptr = match invoke(lib, id, (fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    return session_ptr_or_raise(ptr)?;
+    let ptr = coil_tls_server_enable(fd, cert_pem, key_pem, timeout_ms, client_ca_pem, alpn, 0);
+    return (fd, session_ptr_or_raise(ptr)?);
 }
 
 fn disable(Session s, int fd) -> Result<(), TlsError> {
     if s.ptr == 0 {
         raise TlsError::Io(IoError::InvalidInput);
     }
-    let lib = tls_lib()?;
-    let id = match declare(lib, "coil_tls_disable", (Int, Int, Int), Void) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    match invoke(lib, id, (s.ptr, fd, 0)) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+    coil_tls_disable(s.ptr, fd, 0);
     return ();
 }
 
@@ -202,118 +109,65 @@ fn alpn_at(int ptr) -> Result<string, TlsError> {
     if ptr == 0 {
         raise TlsError::Io(IoError::InvalidInput);
     }
-    let lib = tls_lib()?;
-    return match alpn_string(lib, ptr) {
-        Result::Ok(s) => s,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
+    return coil_tls_alpn_cstr(ptr);
 }
 
 fn alpn_protocol(Session s) -> Result<string, TlsError> {
     return alpn_at(s.ptr)?;
 }
 
-fn session_for_stream(Stream s) -> int {
-    let lib = match tls_lib() {
-        Result::Ok(h) => h,
-        Result::Err(_) => { return 0; },
-    };
-    let id = match declare(lib, "coil_tls_session_for_fd", (Int,), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { return 0; },
-    };
-    let fd = match s.fd() {
-        Result::Ok(v) => v,
-        Result::Err(_) => { return 0; },
-    };
-    return match invoke(lib, id, (fd,)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => 0,
-    };
-}
-
-fn disable_stream(Stream s) -> Result<Stream, TlsError> {
-    let lib = tls_lib()?;
-    let lookup = match declare(lib, "coil_tls_session_for_fd", (Int,), Int) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    let fd = s.fd().map_err(fn (IoError e) => TlsError::Io(e))?;
-    let ptr = match invoke(lib, lookup, (fd,)) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    if ptr == 0 {
-        raise TlsError::Io(IoError::InvalidInput);
+// The `IoError` of a failed read or write, from the native side's last
+// error: `IoError::Protocol` for a certificate or handshake failure.
+fn last_io_error() -> IoError {
+    let name = coil_tls_last_error();
+    if name == "" {
+        return IoError::Other;
     }
-    let id = match declare(lib, "coil_tls_disable", (Int, Int, Int), Void) {
-        Result::Ok(v) => v,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    match invoke(lib, id, (ptr, fd, 0)) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => { raise TlsError::Io(IoError::Other); },
-    };
-    return s;
+    return io_error_from_name(name);
 }
 
-// A stream call's failure: `IoError::Protocol` is the native side's own
-// certificate or handshake failure, which it names in its last error.
+// A TLS stream call's failure as a `TlsError`: `IoError::Protocol` is the
+// native side's certificate or handshake failure, which it names.
 fn stream_failure(IoError e) -> TlsError {
     if e != IoError::Protocol {
         return TlsError::Io(e);
     }
-    let name = match native_last_error() {
-        Result::Ok(s) => s,
-        Result::Err(_) => "",
-    };
-    if name == "Certificate" {
+    if coil_tls_last_error() == "Certificate" {
         return TlsError::Certificate;
     }
     return TlsError::Handshake;
 }
 
-fn handshake_until_ready(Stream s) -> Result<Stream, TlsError> {
-    while true {
-        let wbuf: Vec<byte> = Vec::new();
-        // Successful empty write is Ready. Empty userland read does not
-        // pump (VM returns Ok at capacity 0) so it is not a Ready signal.
-        match write(s, wbuf) {
-            Result::Ok(_) => {
-                return s;
-            },
-            Result::Err(e) => {
-                if e != IoError::WouldBlock {
-                    raise stream_failure(e);
-                }
-            },
-        };
-        let rbuf: Vec<byte> = Vec::new();
-        match read(s, rbuf) {
-            Result::Ok(_) => 0,
-            Result::Err(e) => {
-                if e != IoError::WouldBlock {
-                    raise stream_failure(e);
-                }
-            },
-        };
-        s.park().map_err(fn (IoError e) => stream_failure(e))?;
+// Decrypted bytes into the front of `buf`: `Some(n)`, or `None` at the
+// peer's close_notify or end of input.
+fn read_at(int session, int fd, Vec<byte> buf) -> Result<Option<int>, IoError> {
+    let n = coil_tls_read(session, fd, buf, buf.len(), 0);
+    if n < 0 {
+        raise last_io_error();
     }
+    if n == 0 && buf.len() != 0 {
+        return None;
+    }
+    return Some(n);
 }
 
-fn attach_and_handshake(Stream s, int ptr) -> Result<Stream, TlsError> {
-    let lib = tls_lib()?;
-    let read_fn = hook_addr(lib, "coil_tls_stream_read_fn")?;
-    let write_fn = hook_addr(lib, "coil_tls_stream_write_fn")?;
-    let shutdown_fn = hook_addr(lib, "coil_tls_stream_shutdown_fn")?;
-    let free_fn = hook_addr(lib, "coil_tls_stream_free_fn")?;
-    match s.attach(ptr, read_fn, write_fn, shutdown_fn, free_fn) {
-        Result::Ok(attached) => {
-            return handshake_until_ready(attached)?;
-        },
-        Result::Err(e) => {
-            native_free(lib, ptr);
-            raise TlsError::Io(e);
-        },
-    };
+// How many bytes of `buf` the session took to send.
+fn write_at(int session, int fd, readonly Vec<byte> buf) -> Result<int, IoError> {
+    let n = coil_tls_write(session, fd, buf, buf.len(), 0);
+    if n < 0 {
+        raise last_io_error();
+    }
+    return n;
+}
+
+// Whether a WouldBlock retry waits for the socket to take writes (TLS
+// records to send) rather than for data.
+fn wants_write(int session) -> bool {
+    return coil_tls_wants_write(session) == 1;
+}
+
+// close_notify to the peer and the session freed.
+fn finish(int session, int fd) {
+    coil_tls_disable(session, fd, 0);
+    coil_tls_free(session);
 }
