@@ -152,7 +152,7 @@ fn read_at(int session, int fd, Vec<byte> buf) -> Result<Option<int>, IoError> {
 }
 
 // How many bytes of `buf` the session took to send.
-fn write_at(int session, int fd, Vec<byte> buf) -> Result<int, IoError> {
+fn write_at(int session, int fd, readonly Vec<byte> buf) -> Result<int, IoError> {
     let n = coil_tls_write(session, fd, buf, buf.len(), 0);
     if n < 0 {
         raise last_io_error();

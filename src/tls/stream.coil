@@ -123,7 +123,7 @@ impl Read for TlsStream {
 }
 
 impl Write for TlsStream {
-    fn write(TlsStream s, Vec<byte> buf) -> Result<int, IoError> {
+    fn write(TlsStream s, readonly Vec<byte> buf) -> Result<int, IoError> {
         if s.__session == 0 {
             raise IoError::AlreadyClosed;
         }
